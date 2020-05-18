@@ -45,6 +45,17 @@ nearest distf x = go
               then go ll
               else go rr
 
+
+data P = P Double Double deriving (Show)
+ps = [P 0 1, P 1 2, P 3 4, P 2 4, P (- 2) 3, P (-10) 2, P 4 3, P 10 10, P 20 2]
+distp :: P -> P -> Double
+distp (P x1 y1) (P x2 y2) = sqrt $ x1*x1 + y2*y2
+
+
+build' :: (Floating d, Ord d) =>
+          (a -> a -> d) -> Int -> [a] -> IO (VPTree d a)
+build' df n xs = withST (build df n xs)
+
 -- | Build a 'VPTree'
 build :: (PrimMonad m, Floating d, Ord d) =>
          (a -> a -> d) -- ^ Distance function
@@ -56,7 +67,7 @@ build distf n xs gen = do
   vp <- selectVP distf n xs gen
   let
     nxs = length xs
-    branch l | null l = pure Tip
+    branch l | length l <= 1 = pure Tip
              | otherwise = build distf n l gen
     (mu, _) = medianDist distf nxs vp xs
     (ll, rr) = partition (\x -> distf x vp < mu) xs
