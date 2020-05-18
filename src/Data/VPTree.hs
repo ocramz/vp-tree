@@ -1,5 +1,6 @@
 {-# language BangPatterns #-}
 {-# language DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
+{-# language LambdaCase #-}
 {-# options_ghc -Wno-unused-imports #-}
 {- | Vantage point trees
 
@@ -21,8 +22,8 @@ import System.Random.MWC.Probability (Gen, Prob, withSystemRandom, asGenST)
 import Control.Monad.Primitive (PrimMonad(..), PrimState)
 -- sampling
 import Numeric.Sampling (sample)
---transformers
-import Control.Monad.Trans.State.Lazy (StateT, get, put, execStateT)
+-- --transformers
+-- import Control.Monad.Trans.State.Lazy (StateT, get, put, execStateT)
 -- vector
 import Data.Vector (Vector, fromList, thaw, freeze, (!))
 import Data.Vector.Generic.Mutable (MVector)
@@ -33,6 +34,16 @@ import qualified Data.Vector.Algorithms.Merge as V (sort, Comparison)
 data VPTree d a = Branch {-# UNPACK #-} !d !a !(VPTree d a) !(VPTree d a)
                 | Tip
                 deriving (Show, Functor, Foldable, Traversable)
+
+
+nearest distf x = go
+  where go = \case
+          Branch tau v ll rr ->
+            let d = distf x v
+            in
+              if d < tau
+              then go ll
+              else go rr
 
 -- | Build a 'VPTree'
 build :: (PrimMonad m, Floating d, Ord d) =>
