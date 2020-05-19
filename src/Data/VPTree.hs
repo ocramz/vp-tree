@@ -39,6 +39,10 @@ data VPTree d a = Branch {-# UNPACK #-} !d !a !(VPTree d a) !(VPTree d a)
                 deriving (Show, Functor, Foldable, Traversable)
 
 
+{- VPT construction and querying : 
+http://stevehanov.ca/blog/index.php?id=130
+-}
+
 -- nearest distf x = go
 --   where go = \case
 --           Branch tau v ll rr ->
