@@ -20,6 +20,7 @@ library
   hs-source-dirs:      src
   exposed-modules:     Data.VPTree
   build-depends:       base >= 4.7 && < 5
+                     , boxes
                      , deepseq
                      , mwc-probability
                      , primitive

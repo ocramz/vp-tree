@@ -16,7 +16,10 @@ import Data.Foldable (foldlM)
 import Control.Monad.ST (ST, runST)
 import Data.List (partition)
 import Data.Maybe (fromMaybe)
+import Text.Printf (PrintfArg, printf, PrintfType)
 
+-- boxes
+import qualified Text.PrettyPrint.Boxes as B (Box, render, emptyBox, vcat, hcat, text, top, bottom, center1)
 -- deepseq
 import Control.DeepSeq (NFData (rnf))
 -- mwc-probability
@@ -28,28 +31,41 @@ import Numeric.Sampling (sample)
 -- --transformers
 -- import Control.Monad.Trans.State.Lazy (StateT, get, put, execStateT)
 -- vector
-import qualified Data.Vector as V (Vector, map, replicate, partition, zipWith, head, fromList, thaw, freeze, (!))
+import qualified Data.Vector as V (Vector, map, toList, replicate, partition, zipWith, head, tail, fromList, thaw, freeze, (!))
 import Data.Vector.Generic.Mutable (MVector)
 -- vector-algorithms
 import qualified Data.Vector.Algorithms.Merge as V (sort, Comparison)
 
 
 data VPTree d a = Branch {-# UNPACK #-} !d !a !(VPTree d a) !(VPTree d a)
-                | Tip
+                -- | Sing !d !a
+                | Tip -- (V.Vector a)
                 deriving (Show, Functor, Foldable, Traversable)
 
+draw :: (Show a, PrintfArg d) => VPTree d a -> IO ()
+draw = putStrLn . B.render . toBox
+
+toBox :: (Show a, PrintfArg d) => VPTree d a -> B.Box
+toBox = \case
+  (Branch d x tl tr) ->
+    nodeBox x d `stack` (toBox tl `byside` toBox tr)
+  -- Sing d x -> nodeBox x d
+  Tip -> txt "*"
+  where nodeBox x d = txt (printf "%s,%5.2f" (show x) d)
+
+txt :: String -> B.Box
+txt t = spc `byside` B.text t `byside` spc
+  where spc = B.emptyBox 1 1
+
+byside :: B.Box -> B.Box -> B.Box
+byside l r = B.hcat B.top [l, r]
+
+stack :: B.Box -> B.Box -> B.Box
+stack t b = B.vcat B.center1 [t, b]
 
 
 
--- draw :: Tree String -> [String]
--- draw (Node x ts0) = lines x ++ drawSubTrees ts0
---   where
---     drawSubTrees [] = []
---     drawSubTrees [t] =
---         "|" : shift "`- " "   " (draw t)
---     drawSubTrees (t:ts) =
---         "|" : shift "+- " "|  " (draw t) ++ drawSubTrees ts
---     shift first other = zipWith (++) (first : repeat other)
+
 
 {- VPT construction and querying : 
 http://stevehanov.ca/blog/index.php?id=130
@@ -69,7 +85,7 @@ data P = P Double Double
 instance Show P where
   show (P x y) = show (x,y)
 pps :: V.Vector P
-pps = V.fromList [P 0 1, P 1 2, P 3 4, P 2 4, P (- 2) 3, P (-10) 2, P 4 3, P 10 10, P 20 2]
+pps = V.fromList [P 0 1, P 1 2, P 3 4, P 2 4, P (- 2) 3, P (-10) 2, P (-8) 3, P 4 3, P 6 7,  P 10 10, P 20 2, P 15 5]
 distp :: P -> P -> Double
 distp (P x1 y1) (P x2 y2) = sqrt $ (x1 - x2)**2 + (y1 - y2)**2
 
@@ -87,7 +103,8 @@ build :: (PrimMonad m, RealFrac b, Floating d, Ord d) =>
          (a -> a -> d) -- ^ Distance function
       -> b -- ^ Proportion of dataset to sample
       -> V.Vector a -- ^ Dataset
-      -> Gen (PrimState m) -> m (VPTree d a)
+      -> Gen (PrimState m)
+      -> m (VPTree d a)
 build distf prop xs gen = do
   vp <- selectVP distf prop xs gen
   let
@@ -109,7 +126,8 @@ selectVP :: (PrimMonad m, RealFrac b, Foldable f, Ord d, Floating d) =>
 selectVP distf prop sset gen = do
   ps <- sampleV n sset gen
   let pstart = V.head ps
-  snd <$> foldlM pickMu (0, pstart) ps
+      ptail = V.tail ps
+  snd <$> foldlM pickMu (0, pstart) ptail
   where
     n = floor (prop * fromIntegral ndata)
     ndata = length sset -- size of dataset at current level
@@ -119,7 +137,8 @@ selectVP distf prop sset gen = do
           spread = variance dists (V.replicate n mu)
       if spread > spread_curr
         then pure (spread, p)
-        else pure (spread, p_curr)
+        else pure (spread_curr, p_curr)
+
 
 -- logVar :: Show a => String -> a -> IO ()
 -- logVar w x = putStrLn $ unwords [w, "=", show x]
