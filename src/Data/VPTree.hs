@@ -56,13 +56,13 @@ import qualified Data.Vector.Algorithms.Merge as V (sort, Comparison)
 
 
 -- | Vantage point tree
-data VPTree d a = Branch {-# UNPACK #-} !d !a !(VPTree d a) !(VPTree d a)
+data VPTree d a = Bin {-# UNPACK #-} !d !a !(VPTree d a) !(VPTree d a)
                 -- | Sing !d !a
                 | Tip -- (V.Vector a)
                 deriving (Show, Functor, Foldable, Traversable)
 
 instance (NFData d, NFData a) => NFData (VPTree d a) where
-  rnf (Branch d x tl tr) = rnf d `seq` rnf x `seq` rnf tl `seq` rnf tr
+  rnf (Bin d x tl tr) = rnf d `seq` rnf x `seq` rnf tl `seq` rnf tr
   rnf Tip = ()
 
 
@@ -73,7 +73,7 @@ draw = putStrLn . B.render . toBox
 
 toBox :: (Show a, PrintfArg d) => VPTree d a -> B.Box
 toBox = \case
-  (Branch d x tl tr) ->
+  (Bin d x tl tr) ->
     nodeBox x d `stack` (toBox tl `byside` toBox tr)
   -- Sing d x -> nodeBox x d
   Tip -> txt "*"
@@ -97,24 +97,24 @@ stack t b = B.vcat B.center1 [t, b]
 http://stevehanov.ca/blog/index.php?id=130
 -}
 
-nearest distf x = go []
-  where
-    go acc Tip = acc
-    go acc (Branch mu v ll rr)
-      | xmu < 0 = go acc rr -- query point is outside the radius mu
-      | xv < xmu = go acc ll 
-      | otherwise = go ( (v, mu) : acc) ll -- FIXME double check this
-      where
-        xv = distf x v -- x to vantage point
-        xmu = mu - xv  -- x to the outer shell
+-- nearest distf x = go []
+--   where
+--     go acc Tip = acc
+--     go acc (Branch mu v ll rr)
+--       | xmu < 0 = go acc rr -- query point is outside the radius mu
+--       | xv < xmu = go acc ll 
+--       | otherwise = go ( (v, mu) : acc) ll -- FIXME double check this
+--       where
+--         xv = distf x v -- x to vantage point
+--         xmu = mu - xv  -- x to the outer shell
 
 
-nearest' :: (Fractional t, Ord t) =>
-            (p -> a -> t) -> p -> VPTree t a -> PQ.IntPSQ t a
-nearest' distf x = go PQ.empty 0 (1/0)
+nearest :: (Fractional t, Ord t) =>
+           (p -> a -> t) -> p -> VPTree t a -> PQ.IntPSQ t a
+nearest distf x = go PQ.empty 0 (1/0)
   where
     go acc _ _ Tip = acc
-    go acc i srad (Branch mu v ll rr)
+    go acc i srad (Bin mu v ll rr)
       | xmu < 0 = go acc i srad rr -- query point is outside the radius mu
       | xv < xmu = go acc i srad ll -- FIXME double check this
       | otherwise = let
@@ -136,7 +136,7 @@ data VPT d a = VPT {
                    }
 
 -- nearestVPT :: (Fractional t, Ord t) => VPT t a -> a -> PQ.IntPSQ t a
-nearestVPT (VPT t df) x = nearest' df x t
+nearestVPT (VPT t df) x = nearest df x t
 
 buildVPT :: (PrimMonad m, RealFrac b, Floating d, Ord d) =>
             (a -> a -> d)
@@ -163,7 +163,7 @@ build distf prop xs gen = do
     (ll, rr) = V.partition (\x -> distf x vp < mu) xs
   ltree <- branch ll
   rtree <- branch rr
-  pure $ Branch mu vp ltree rtree
+  pure $ Bin mu vp ltree rtree
 
 -- | Select a vantage point
 selectVP :: (PrimMonad m, RealFrac b, Foldable f, Ord d, Floating d) =>
