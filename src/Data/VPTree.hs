@@ -100,8 +100,25 @@ nearest distf x = go []
     go acc Tip = acc
     go acc (Branch mu v ll rr)
       | xmu < 0 = go acc rr -- query point is outside the radius mu
-      | xv < xmu = go acc ll -- FIXME double check this 
-      | otherwise = go ( (v, mu) : acc) ll
+      | xv < xmu = go acc ll 
+      | otherwise = go ( (v, mu) : acc) ll -- FIXME double check this
+      where
+        xv = distf x v -- x to vantage point
+        xmu = mu - xv  -- x to the outer shell
+
+
+nearest' :: (Fractional t, Ord t) =>
+            (p -> a -> t) -> p -> VPTree t a -> PQ.IntPSQ t a
+nearest' distf x = go PQ.empty 0 (1/0)
+  where
+    go acc _ _ Tip = acc
+    go acc i srad (Branch mu v ll rr)
+      | xmu < 0 = go acc i srad rr -- query point is outside the radius mu
+      | xv < xmu = go acc i srad ll -- FIXME double check this
+      | otherwise = let
+          acc' = PQ.insert i xv v acc
+          srad' = min mu srad -- new search radius
+          in go acc' (i + 1) srad' ll -- FIXME double check this
       where
         xv = distf x v -- x to vantage point
         xmu = mu - xv  -- x to the outer shell
