@@ -53,6 +53,8 @@ import Data.Vector.Generic.Mutable (MVector)
 -- vector-algorithms
 import qualified Data.Vector.Algorithms.Merge as V (sort, Comparison)
 
+
+
 -- | Vantage point tree
 data VPTree d a = Branch {-# UNPACK #-} !d !a !(VPTree d a) !(VPTree d a)
                 -- | Sing !d !a
@@ -126,14 +128,22 @@ nearest' distf x = go PQ.empty 0 (1/0)
 
 
 
--- newtype MaxPQ p x = MaxPQ (PQ.IntPSQ (Down p) x)
 
--- insert :: Ord p => Int -> p -> x -> MaxPQ p x -> MaxPQ p x
--- insert ix p x (MaxPQ pq )= MaxPQ $ PQ.insert ix (Down p) x pq
+-- | keep track of the distance function used when constructing the tree
+data VPT d a = VPT {
+    vpTree :: VPTree d a
+  , vptDistFun :: a -> a -> d
+                   }
 
+-- nearestVPT :: (Fractional t, Ord t) => VPT t a -> a -> PQ.IntPSQ t a
+nearestVPT (VPT t df) x = nearest' df x t
 
-
-
+buildVPT :: (PrimMonad m, RealFrac b, Floating d, Ord d) =>
+            (a -> a -> d)
+         -> b -> V.Vector a -> Gen (PrimState m) -> m (VPT d a)
+buildVPT df prop xs gen = do
+  t <- build df prop xs gen
+  pure $ VPT t df
 
 
 
