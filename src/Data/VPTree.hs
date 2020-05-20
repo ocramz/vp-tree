@@ -53,16 +53,17 @@ http://stevehanov.ca/blog/index.php?id=130
 --               else go rr
 
 
-data P = P Double Double deriving (Show)
+data P = P Double Double
+instance Show P where
+  show (P x y) = show (x,y)
 pps :: V.Vector P
 pps = V.fromList [P 0 1, P 1 2, P 3 4, P 2 4, P (- 2) 3, P (-10) 2, P 4 3, P 10 10, P 20 2]
 distp :: P -> P -> Double
-distp (P x1 y1) (P x2 y2) = sqrt $ x1*x2 + y1*y2
+distp (P x1 y1) (P x2 y2) = sqrt $ (x1 - x2)**2 + (y1 - y2)**2
 
 
--- build' :: (Floating d, Ord d) =>
---           (a -> a -> d) -> Float -> V.Vector a -> IO (VPTree d a)
--- build' df p xs = withST (build df p xs)
+
+
 
 build' :: (RealFrac b, Floating d, Show a, Ord d) =>
           (a -> a -> d) -> b -> V.Vector a -> IO (VPTree d a)
@@ -77,14 +78,11 @@ build :: (PrimMonad m, RealFrac b, Floating d, Ord d) =>
       -> Gen (PrimState m) -> m (VPTree d a)
 build distf prop xs gen = do
   vp <- selectVP distf prop xs gen
-  -- putStrLn $ show vp -- debug
   let
-    branch l | length l <= 2 = pure Tip
+    branch l | length l <= 1 = pure Tip
              | otherwise = build distf prop l gen
     (mu, _) = medianDist distf vp xs
     (ll, rr) = V.partition (\x -> distf x vp < mu) xs
-  -- putStrLn $ unwords ["LL :", show ll]
-  -- putStrLn $ unwords ["RR :", show rr]
   ltree <- branch ll
   rtree <- branch rr
   pure $ Branch mu vp ltree rtree
@@ -106,10 +104,13 @@ selectVP distf prop sset gen = do
     pickMu (best, pcurr) p = do
       ds <- sampleV n sset gen
       let (mu, dists) = medianDist distf p ds
-          spread = variance dists (V.replicate ndata mu)
+          spread = variance dists (V.replicate n mu)
       if spread > best
         then pure (spread, p)
         else pickMu (spread, pcurr) p
+
+-- logVar :: Show a => String -> a -> IO ()
+-- logVar w x = putStrLn $ unwords [w, "=", show x]
 
 -- | Sample _without_ replacement. Returns empty list if we ask for too many samples
 sampleV :: (PrimMonad m, Foldable f) =>
