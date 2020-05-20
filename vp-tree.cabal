@@ -24,8 +24,9 @@ library
                      , deepseq
                      , mwc-probability
                      , primitive
+                     , psqueues
                      , sampling
-                     , transformers
+                     -- , transformers
                      , vector
                      , vector-algorithms
 

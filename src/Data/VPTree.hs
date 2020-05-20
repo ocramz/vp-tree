@@ -4,22 +4,30 @@
 {-# options_ghc -Wno-unused-imports -Wno-type-defaults -Wno-name-shadowing #-}
 {- | Vantage point trees
 
+Satisfying general proximity/similarity queries with metric trees - J. K. Uhlmann
+
+http://faculty.missouri.edu/~uhlmannj/MetricTree91.pdf
+
 Data structures and algorithms for nearest neighbor search in general metric spaces - P. N. Yianilos
 
 http://web.cs.iastate.edu/~honavar/nndatastructures.pdf
 -}
 module Data.VPTree
   (VPTree
-  -- * Random number generators
-  , withIO, withST
   -- * Construction
   , build
-  -- * Tree drawing
+  -- * Lookup
+
+  -- * Utilities
+  -- ** Rendering trees
   , draw
+  -- ** Random number generation
+  , withIO, withST
   )
   where
 
 import Data.Foldable (foldlM)
+import Data.Ord (Down(..))
 import Control.Monad.ST (ST, runST)
 import Data.List (partition)
 import Data.Maybe (fromMaybe)
@@ -33,6 +41,8 @@ import Control.DeepSeq (NFData (rnf))
 import System.Random.MWC.Probability (Gen, Prob, withSystemRandom, asGenST, asGenIO, GenIO)
 -- primitive
 import Control.Monad.Primitive (PrimMonad(..), PrimState)
+-- psqueues
+import qualified Data.IntPSQ as PQ (IntPSQ, empty, size, insert, findMin, deleteMin)
 -- sampling
 import Numeric.Sampling (sample)
 -- --transformers
@@ -95,6 +105,10 @@ http://stevehanov.ca/blog/index.php?id=130
 --               else go rr
 
 
+-- newtype MaxPQ p x = MaxPQ (PQ.IntPSQ (Down p) x)
+
+-- insert :: Ord p => Int -> p -> x -> MaxPQ p x -> MaxPQ p x
+-- insert ix p x (MaxPQ pq )= MaxPQ $ PQ.insert ix (Down p) x pq
 
 
 
@@ -105,7 +119,7 @@ http://stevehanov.ca/blog/index.php?id=130
 -- | Build a 'VPTree'
 build :: (PrimMonad m, RealFrac b, Floating d, Ord d) =>
          (a -> a -> d) -- ^ Distance function
-      -> b -- ^ Proportion of ramaining dataset to sample at each level
+      -> b -- ^ Proportion of remaining dataset to sample at each level
       -> V.Vector a -- ^ Dataset
       -> Gen (PrimState m)
       -> m (VPTree d a)
@@ -183,10 +197,17 @@ sortV v = runST $ do
   V.freeze vm
 {-# INLINE sortV #-}
 
-withIO :: (GenIO -> IO a) -> IO a
+-- | Runs a PRNG action in IO
+--
+-- NB : uses 'withSystemRandom' internally
+withIO :: (GenIO -> IO a) -- ^ Memory bracket for the PRNG
+       -> IO a
 withIO = withSystemRandom . asGenIO
 
-withST :: (Gen s -> ST s a)
+-- | Runs a PRNG action in the 'ST' monad
+--
+-- NB : uses 'withSystemRandom' internally
+withST :: (Gen s -> ST s a) -- ^ Memory bracket for the PRNG
        -> IO a
 withST = withSystemRandom . asGenST
 
