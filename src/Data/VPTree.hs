@@ -39,6 +39,18 @@ data VPTree d a = Branch {-# UNPACK #-} !d !a !(VPTree d a) !(VPTree d a)
                 deriving (Show, Functor, Foldable, Traversable)
 
 
+
+
+-- draw :: Tree String -> [String]
+-- draw (Node x ts0) = lines x ++ drawSubTrees ts0
+--   where
+--     drawSubTrees [] = []
+--     drawSubTrees [t] =
+--         "|" : shift "`- " "   " (draw t)
+--     drawSubTrees (t:ts) =
+--         "|" : shift "+- " "|  " (draw t) ++ drawSubTrees ts
+--     shift first other = zipWith (++) (first : repeat other)
+
 {- VPT construction and querying : 
 http://stevehanov.ca/blog/index.php?id=130
 -}
@@ -80,7 +92,7 @@ build distf prop xs gen = do
   vp <- selectVP distf prop xs gen
   let
     branch l | length l <= 1 = pure Tip
-             | otherwise = build distf prop l gen
+             | otherwise = build distf prop l gen -- FIXME termination condition
     (mu, _) = medianDist distf vp xs
     (ll, rr) = V.partition (\x -> distf x vp < mu) xs
   ltree <- branch ll
@@ -101,13 +113,13 @@ selectVP distf prop sset gen = do
   where
     n = floor (prop * fromIntegral ndata)
     ndata = length sset -- size of dataset at current level
-    pickMu (best, pcurr) p = do
+    pickMu (spread_curr, p_curr) p = do
       ds <- sampleV n sset gen
       let (mu, dists) = medianDist distf p ds
           spread = variance dists (V.replicate n mu)
-      if spread > best
+      if spread > spread_curr
         then pure (spread, p)
-        else pickMu (spread, pcurr) p
+        else pure (spread, p_curr)
 
 -- logVar :: Show a => String -> a -> IO ()
 -- logVar w x = putStrLn $ unwords [w, "=", show x]
@@ -127,7 +139,7 @@ medianDist distf p ds = (mu, dists)
 {-# INLINE medianDist #-}
 
 median :: Ord a => V.Vector a -> a
-median xs = sortV xs V.! floor (fromIntegral n / 2)
+median xs = sortV xs V.! floor (fromIntegral n / 2) -- FIXME when n is too small ?
   where n = length xs
 {-# INLINE median #-}
 
