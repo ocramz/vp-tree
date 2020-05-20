@@ -95,14 +95,18 @@ stack t b = B.vcat B.center1 [t, b]
 http://stevehanov.ca/blog/index.php?id=130
 -}
 
--- nearest distf x = go
---   where go = \case
---           Branch tau v ll rr ->
---             let d = distf x v
---             in
---               if d < tau
---               then go ll
---               else go rr
+nearest distf x = go []
+  where
+    go acc Tip = acc
+    go acc (Branch mu v ll rr)
+      | xmu < 0 = go acc rr -- query point is outside the radius mu
+      | xv < xmu = go acc ll -- FIXME double check this 
+      | otherwise = go ( (v, mu) : acc) ll
+      where
+        xv = distf x v -- x to vantage point
+        xmu = mu - xv  -- x to the outer shell
+
+
 
 
 -- newtype MaxPQ p x = MaxPQ (PQ.IntPSQ (Down p) x)
