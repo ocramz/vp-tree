@@ -9,7 +9,14 @@ Data structures and algorithms for nearest neighbor search in general metric spa
 http://web.cs.iastate.edu/~honavar/nndatastructures.pdf
 -}
 module Data.VPTree
-  (VPTree, build)
+  (VPTree
+  -- * Random number generators
+  , withIO, withST
+  -- * Construction
+  , build
+  -- * Tree drawing
+  , draw
+  )
   where
 
 import Data.Foldable (foldlM)
@@ -36,12 +43,19 @@ import Data.Vector.Generic.Mutable (MVector)
 -- vector-algorithms
 import qualified Data.Vector.Algorithms.Merge as V (sort, Comparison)
 
-
+-- | Vantage point tree
 data VPTree d a = Branch {-# UNPACK #-} !d !a !(VPTree d a) !(VPTree d a)
                 -- | Sing !d !a
                 | Tip -- (V.Vector a)
                 deriving (Show, Functor, Foldable, Traversable)
 
+instance (NFData d, NFData a) => NFData (VPTree d a) where
+  rnf (Branch d x tl tr) = rnf d `seq` rnf x `seq` rnf tl `seq` rnf tr
+  rnf Tip = ()
+
+
+
+-- | Draw a tree
 draw :: (Show a, PrintfArg d) => VPTree d a -> IO ()
 draw = putStrLn . B.render . toBox
 
@@ -81,27 +95,17 @@ http://stevehanov.ca/blog/index.php?id=130
 --               else go rr
 
 
-data P = P Double Double
-instance Show P where
-  show (P x y) = show (x,y)
-pps :: V.Vector P
-pps = V.fromList [P 0 1, P 1 2, P 3 4, P 2 4, P (- 2) 3, P (-10) 2, P (-8) 3, P 4 3, P 6 7,  P 10 10, P 20 2, P 15 5]
-distp :: P -> P -> Double
-distp (P x1 y1) (P x2 y2) = sqrt $ (x1 - x2)**2 + (y1 - y2)**2
 
 
 
 
 
-build' :: (RealFrac b, Floating d, Show a, Ord d) =>
-          (a -> a -> d) -> b -> V.Vector a -> IO (VPTree d a)
-build' df p xs = withIO $ build df p xs
 
 
 -- | Build a 'VPTree'
 build :: (PrimMonad m, RealFrac b, Floating d, Ord d) =>
          (a -> a -> d) -- ^ Distance function
-      -> b -- ^ Proportion of dataset to sample
+      -> b -- ^ Proportion of ramaining dataset to sample at each level
       -> V.Vector a -- ^ Dataset
       -> Gen (PrimState m)
       -> m (VPTree d a)
@@ -187,20 +191,13 @@ withST :: (Gen s -> ST s a)
 withST = withSystemRandom . asGenST
 
 
+data P = P Double Double
+instance Show P where
+  show (P x y) = show (x,y)
+pps :: V.Vector P
+pps = V.fromList [P 0 1, P 1 2, P 3 4, P 2 4, P (- 2) 3, P (-10) 2, P (-8) 3, P 4 3, P 6 7,  P 10 10, P 20 2, P 15 5]
+distp :: P -> P -> Double
+distp (P x1 y1) (P x2 y2) = sqrt $ (x1 - x2)**2 + (y1 - y2)**2
 
-{-
--- | A priority search queue with @Int@ keys and priorities of type @p@ and
--- values of type @v@. It is strict in keys, priorities and values.
-data IntPSQ p v
-    = Bin {-# UNPACK #-} !Key !p !v {-# UNPACK #-} !Mask !(IntPSQ p v) !(IntPSQ p v)
-    | Tip {-# UNPACK #-} !Key !p !v
-    | Nil
-    deriving (Foldable, Functor, Show, Traversable)
-
-instance (NFData p, NFData v) => NFData (IntPSQ p v) where
-    rnf (Bin _k p v _m l r) = rnf p `seq` rnf v `seq` rnf l `seq` rnf r
-    rnf (Tip _k p v)        = rnf p `seq` rnf v
-    rnf Nil                 = ()
--}
 
 
