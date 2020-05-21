@@ -5,6 +5,8 @@ import Test.Hspec
 
 import qualified Data.Vector as V (Vector, fromList)
 
+import Data.VPTree (VPTree, build)
+
 main :: IO ()
 main = hspec spec
 
