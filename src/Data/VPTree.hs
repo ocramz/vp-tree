@@ -16,8 +16,8 @@ module Data.VPTree
   (VPTree
   -- * Construction
   , build
-  -- * Lookup
-
+  -- * Nearest-neighbor query
+  , nearest
   -- * Utilities
   -- ** Rendering trees
   , draw
@@ -53,6 +53,7 @@ import Data.Vector.Generic.Mutable (MVector)
 -- vector-algorithms
 import qualified Data.Vector.Algorithms.Merge as V (sort, Comparison)
 
+import qualified Data.MaxPQ as MQ (MaxPQ, empty, insert, size, findMax)
 
 
 -- | Vantage point tree
@@ -68,6 +69,8 @@ instance (NFData d, NFData a) => NFData (VPTree d a) where
 
 
 -- | Draw a tree
+--
+-- NB : prints distance information up to two decimal digits
 draw :: (Show a, PrintfArg d) => VPTree d a -> IO ()
 draw = putStrLn . B.render . toBox
 
@@ -108,15 +111,20 @@ http://stevehanov.ca/blog/index.php?id=130
 --         xv = distf x v -- x to vantage point
 --         xmu = mu - xv  -- x to the outer shell
 
-
-nearest :: (Fractional t, Ord t) =>
-           (p -> a -> t) -> p -> VPTree t a -> PQ.IntPSQ t a
+-- | Query a 'VPTree' for nearest neighbors
+--
+-- NB : the distance function used here should be the same as the one used to construct the tree in the first place
+nearest :: (Fractional d, Ord d) =>
+           (a -> a -> d) -- ^ Distance function
+        -> a -- ^ Query point
+        -> VPTree d a
+        -> PQ.IntPSQ d a
 nearest distf x = go PQ.empty 0 (1/0)
   where
     go acc _ _ Tip = acc
     go acc i srad (Bin mu v ll rr)
       | xmu < 0 = go acc i srad rr -- query point is outside the radius mu
-      | xv < xmu = go acc i srad ll -- FIXME double check this
+      | xv < xmu = go acc i srad ll 
       | otherwise = let
           acc' = PQ.insert i xv v acc
           srad' = min mu srad -- new search radius
