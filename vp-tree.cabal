@@ -49,6 +49,7 @@ test-suite spec
                      , vp-tree
                      , hspec
                      , QuickCheck
+                     , vector
 
 source-repository head
   type:     git

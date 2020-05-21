@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 {-# language BangPatterns #-}
 {-# language DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
@@ -23,12 +24,16 @@ module Data.VPTree
   -- ** Rendering trees
   , draw
   -- ** Random number generation
-  , withIO, withST
+  -- *** IO 
+  , withIO
+  -- *** ST
+  , withST, withST_
   )
   where
 
 import Data.Foldable (foldlM)
 import Data.Ord (Down(..))
+import Data.Word (Word32)
 import Control.Monad.ST (ST, runST)
 import Data.List (partition)
 import Data.Maybe (fromMaybe)
@@ -39,7 +44,7 @@ import qualified Text.PrettyPrint.Boxes as B (Box, render, emptyBox, vcat, hcat,
 -- deepseq
 import Control.DeepSeq (NFData (rnf))
 -- mwc-probability
-import System.Random.MWC.Probability (Gen, Prob, withSystemRandom, asGenST, asGenIO, GenIO, create)
+import System.Random.MWC.Probability (Gen, Prob, withSystemRandom, asGenST, asGenIO, GenIO, create, initialize)
 -- primitive
 import Control.Monad.Primitive (PrimMonad(..), PrimState)
 -- psqueues
@@ -50,6 +55,7 @@ import Numeric.Sampling (sample)
 -- import Control.Monad.Trans.State.Lazy (StateT, get, put, execStateT)
 -- vector
 import qualified Data.Vector as V (Vector, map, toList, replicate, partition, zipWith, head, tail, fromList, thaw, freeze, (!))
+import qualified Data.Vector.Generic as VG (Vector(..))
 import Data.Vector.Generic.Mutable (MVector)
 -- vector-algorithms
 import qualified Data.Vector.Algorithms.Merge as V (sort, Comparison)
@@ -58,41 +64,14 @@ import qualified Data.MaxPQ as MQ (MaxPQ, empty, insert, size, findMax)
 
 
 -- | Vantage point tree
-data VPTree d a = Bin {-# UNPACK #-} !d !a !(VPTree d a) !(VPTree d a)
+data VPTree d a = Bin  !d !a !(VPTree d a) !(VPTree d a)
                 -- | Sing !d !a
-                | Tip -- (V.Vector a)
+                | Tip
                 deriving (Show, Functor, Foldable, Traversable)
 
 instance (NFData d, NFData a) => NFData (VPTree d a) where
   rnf (Bin d x tl tr) = rnf d `seq` rnf x `seq` rnf tl `seq` rnf tr
   rnf Tip = ()
-
-
-
--- | Draw a tree
---
--- NB : prints distance information up to two decimal digits
-draw :: (Show a, PrintfArg d) => VPTree d a -> IO ()
-draw = putStrLn . B.render . toBox
-
-toBox :: (Show a, PrintfArg d) => VPTree d a -> B.Box
-toBox = \case
-  (Bin d x tl tr) ->
-    nodeBox x d `stack` (toBox tl `byside` toBox tr)
-  -- Sing d x -> nodeBox x d
-  Tip -> txt "*"
-  where nodeBox x d = txt (printf "%s,%5.2f" (show x) d)
-
-txt :: String -> B.Box
-txt t = spc `byside` B.text t `byside` spc
-  where spc = B.emptyBox 1 1
-
-byside :: B.Box -> B.Box -> B.Box
-byside l r = B.hcat B.top [l, r]
-
-stack :: B.Box -> B.Box -> B.Box
-stack t b = B.vcat B.center1 [t, b]
-
 
 
 
@@ -239,23 +218,54 @@ withIO :: (GenIO -> IO a) -- ^ Memory bracket for the PRNG
        -> IO a
 withIO = withSystemRandom . asGenIO
 
--- | Runs a PRNG action in the 'ST' monad
+-- | Runs a PRNG action in the 'ST' monad, using a fixed seed
 --
 -- NB : uses 'create' internally
-withST :: (forall s . Gen s -> ST s a) -- ^ Memory bracket for the PRNG
-       -> a
-withST st = runST $ do
+withST_ :: (forall s . Gen s -> ST s a) -- ^ Memory bracket for the PRNG
+        -> a
+withST_ st = runST $ do
   g <- create
   st g
 
+-- | Runs a PRNG action in the 'ST' monad, using a given random seed
+--
+-- NB : uses 'initialize' internally
+withST :: (VG.Vector v Word32) =>
+          v Word32 -- ^ Random seed
+       -> (forall s . Gen s -> ST s a) -- ^ Memory bracket for the PRNG
+       -> a
+withST seed st = runST $ do
+  g <- initialize seed
+  st g
 
-data P = P Double Double
-instance Show P where
-  show (P x y) = show (x,y)
-pps :: V.Vector P
-pps = V.fromList [P 0 1, P 1 2, P 3 4, P 2 4, P (- 2) 3, P (-10) 2, P (-8) 3, P 4 3, P 6 7,  P 10 10, P 20 2, P 15 5]
-distp :: P -> P -> Double
-distp (P x1 y1) (P x2 y2) = sqrt $ (x1 - x2)**2 + (y1 - y2)**2
+
+
+-- | Draw a tree
+--
+-- NB : prints distance information up to two decimal digits
+draw :: (Show a, PrintfArg d) => VPTree d a -> IO ()
+draw = putStrLn . B.render . toBox
+
+toBox :: (Show a, PrintfArg d) => VPTree d a -> B.Box
+toBox = \case
+  (Bin d x tl tr) ->
+    nodeBox x d `stack` (toBox tl `byside` toBox tr)
+  -- Sing d x -> nodeBox x d
+  Tip -> txt "*"
+  where nodeBox x d = txt (printf "%s,%5.2f" (show x) d)
+
+txt :: String -> B.Box
+txt t = spc `byside` B.text t `byside` spc
+  where spc = B.emptyBox 1 1
+
+byside :: B.Box -> B.Box -> B.Box
+byside l r = B.hcat B.top [l, r]
+
+stack :: B.Box -> B.Box -> B.Box
+stack t b = B.vcat B.center1 [t, b]
+
+
+
 
 
 
