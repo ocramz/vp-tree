@@ -1,7 +1,7 @@
 name:                vp-tree
 version:             0.1.0.0
 synopsis:            Vantage Point Trees
--- description:
+description:         Vantage Point Trees enable fast nearest-neighbor queries in metric spaces
 homepage:            https://github.com/ocramz/vp-tree
 license:             BSD3
 license-file:        LICENSE

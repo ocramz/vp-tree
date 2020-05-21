@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes #-}
 {-# language BangPatterns #-}
 {-# language DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
 {-# language LambdaCase #-}
@@ -17,7 +18,7 @@ module Data.VPTree
   -- * Construction
   , build
   -- * Nearest-neighbor query
-  , nearest
+  -- , nearest
   -- * Utilities
   -- ** Rendering trees
   , draw
@@ -38,7 +39,7 @@ import qualified Text.PrettyPrint.Boxes as B (Box, render, emptyBox, vcat, hcat,
 -- deepseq
 import Control.DeepSeq (NFData (rnf))
 -- mwc-probability
-import System.Random.MWC.Probability (Gen, Prob, withSystemRandom, asGenST, asGenIO, GenIO)
+import System.Random.MWC.Probability (Gen, Prob, withSystemRandom, asGenST, asGenIO, GenIO, create)
 -- primitive
 import Control.Monad.Primitive (PrimMonad(..), PrimState)
 -- psqueues
@@ -100,58 +101,53 @@ stack t b = B.vcat B.center1 [t, b]
 http://stevehanov.ca/blog/index.php?id=130
 -}
 
--- nearest distf x = go []
---   where
---     go acc Tip = acc
---     go acc (Branch mu v ll rr)
---       | xmu < 0 = go acc rr -- query point is outside the radius mu
---       | xv < xmu = go acc ll 
---       | otherwise = go ( (v, mu) : acc) ll -- FIXME double check this
---       where
---         xv = distf x v -- x to vantage point
---         xmu = mu - xv  -- x to the outer shell
+
 
 -- | Query a 'VPTree' for nearest neighbors
 --
 -- NB : the distance function used here should be the same as the one used to construct the tree in the first place
-nearest :: (Fractional d, Ord d) =>
-           (a -> a -> d) -- ^ Distance function
-        -> a -- ^ Query point
-        -> VPTree d a
-        -> PQ.IntPSQ d a
-nearest distf x = go PQ.empty 0 (1/0)
-  where
-    go acc _ _ Tip = acc
-    go acc i srad (Bin mu v ll rr)
-      | xmu < 0 = go acc i srad rr -- query point is outside the radius mu
-      | xv < xmu = go acc i srad ll 
-      | otherwise = let
-          acc' = PQ.insert i xv v acc
-          srad' = min mu srad -- new search radius
-          in go acc' (i + 1) srad' ll -- FIXME double check this
-      where
-        xv = distf x v -- x to vantage point
-        xmu = mu - xv  -- x to the outer shell
+
+-- nearest :: (Fractional d, Ord d) =>
+--            (a -> a -> d) -- ^ Distance function
+--         -> a -- ^ Query point
+--         -> VPTree d a
+--         -> PQ.IntPSQ d a
+
+-- nearest distf x = go PQ.empty 0 (1/0)
+--   where
+--     go acc _ _ Tip = acc
+--     go acc i srad (Bin mu v ll rr)
+--       | xmu < 0 = go acc i srad rr -- query point is outside the radius mu
+      
+--       -- | xv < xmu = go acc i srad ll 
+--       -- | otherwise = let
+--       --     acc' = PQ.insert i xv v acc
+--       --     srad' = min mu srad -- new search radius
+--       --     in go acc' (i + 1) srad' ll -- FIXME double check this
+      
+--       where
+--         xv = distf x v -- x to vantage point
+--         xmu = mu - xv  -- x to the outer shell
 
 
 
 
 
--- | keep track of the distance function used when constructing the tree
-data VPT d a = VPT {
-    vpTree :: VPTree d a
-  , vptDistFun :: a -> a -> d
-                   }
+-- -- | keep track of the distance function used when constructing the tree
+-- data VPT d a = VPT {
+--     vpTree :: VPTree d a
+--   , vptDistFun :: a -> a -> d
+--                    }
 
--- nearestVPT :: (Fractional t, Ord t) => VPT t a -> a -> PQ.IntPSQ t a
-nearestVPT (VPT t df) x = nearest df x t
+-- -- nearestVPT :: (Fractional t, Ord t) => VPT t a -> a -> PQ.IntPSQ t a
+-- nearestVPT (VPT t df) x = nearest df x t
 
-buildVPT :: (PrimMonad m, RealFrac b, Floating d, Ord d) =>
-            (a -> a -> d)
-         -> b -> V.Vector a -> Gen (PrimState m) -> m (VPT d a)
-buildVPT df prop xs gen = do
-  t <- build df prop xs gen
-  pure $ VPT t df
+-- buildVPT :: (PrimMonad m, RealFrac b, Floating d, Ord d) =>
+--             (a -> a -> d)
+--          -> b -> V.Vector a -> Gen (PrimState m) -> m (VPT d a)
+-- buildVPT df prop xs gen = do
+--   t <- build df prop xs gen
+--   pure $ VPT t df
 
 
 
@@ -245,10 +241,12 @@ withIO = withSystemRandom . asGenIO
 
 -- | Runs a PRNG action in the 'ST' monad
 --
--- NB : uses 'withSystemRandom' internally
-withST :: (Gen s -> ST s a) -- ^ Memory bracket for the PRNG
-       -> IO a
-withST = withSystemRandom . asGenST
+-- NB : uses 'create' internally
+withST :: (forall s . Gen s -> ST s a) -- ^ Memory bracket for the PRNG
+       -> a
+withST st = runST $ do
+  g <- create
+  st g
 
 
 data P = P Double Double
