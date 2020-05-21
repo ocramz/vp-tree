@@ -86,11 +86,45 @@ http://stevehanov.ca/blog/index.php?id=130
 --
 -- NB : the distance function used here should be the same as the one used to construct the tree in the first place
 
--- nearest :: (Fractional d, Ord d) =>
---            (a -> a -> d) -- ^ Distance function
---         -> a -- ^ Query point
---         -> VPTree d a
---         -> PQ.IntPSQ d a
+nearest :: (Fractional d, Ord d) =>
+           (a -> a -> d) -- ^ Distance function
+        -> Int -- ^ Number of nearest neighbors to return
+        -> a -- ^ Query point
+        -> VPTree d a
+        -> PQ.IntPSQ d a
+nearest distf k x = go PQ.empty 0
+  where
+    go acc _ _ | length acc == k = acc
+    go acc _ Tip = acc
+    go acc i (Bin mu v ll rr)
+      | xmu < 0 = go acc i rr -- query point is outside the radius mu
+      | otherwise = let
+          acc' = PQ.insert i xv v acc
+          in go acc' (succ i) ll
+      where
+        xv = distf x v -- x to vantage point
+        xmu = mu - xv  -- x to the outer shell
+
+
+
+nearestIO distf k x = go PQ.empty 0
+  where
+    go acc i (Bin mu v ll rr) =
+      let
+        xv = distf x v -- x to vantage point
+        xmu = mu - xv  -- x to the outer shell
+      in
+        if xmu < 0
+        then  go acc i rr -- query point is outside the radius mu
+        else
+          do
+            let acc' = PQ.insert i xv v acc
+            logVar "i" i
+            logVar "acc" acc
+            go acc' (i + 1) ll
+    go acc _ _ | length acc == k = pure acc
+    go acc _ Tip = pure acc
+
 
 -- nearest distf x = go PQ.empty 0 (1/0)
 --   where
@@ -172,8 +206,8 @@ selectVP distf prop sset gen = do
         else pure (spread_curr, p_curr)
 
 
--- logVar :: Show a => String -> a -> IO ()
--- logVar w x = putStrLn $ unwords [w, "=", show x]
+logVar :: Show a => String -> a -> IO ()
+logVar w x = putStrLn $ unwords [w, "=", show x]
 
 -- | Sample _without_ replacement. Returns empty list if we ask for too many samples
 sampleV :: (PrimMonad m, Foldable f) =>
@@ -269,3 +303,12 @@ stack t b = B.vcat B.center1 [t, b]
 
 
 
+-- test data
+
+data P = P Double Double
+instance Show P where
+  show (P x y) = show (x,y)
+pps :: V.Vector P
+pps = V.fromList [P 0 1, P 1 2, P 3 4, P 2 4, P (- 2) 3, P (-10) 2, P (-8) 3, P 4 3, P 6 7,  P 10 10, P 20 2, P 15 5]
+distp :: P -> P -> Double
+distp (P x1 y1) (P x2 y2) = sqrt $ (x1 - x2)**2 + (y1 - y2)**2
