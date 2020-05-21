@@ -6,10 +6,6 @@
 {-# options_ghc -Wno-unused-imports -Wno-type-defaults -Wno-name-shadowing #-}
 {- | Vantage point trees
 
-Satisfying general proximity/similarity queries with metric trees - J. K. Uhlmann
-
-http://faculty.missouri.edu/~uhlmannj/MetricTree91.pdf
-
 Data structures and algorithms for nearest neighbor search in general metric spaces - P. N. Yianilos
 
 http://web.cs.iastate.edu/~honavar/nndatastructures.pdf
@@ -174,10 +170,10 @@ build :: (PrimMonad m, RealFrac b, Floating d, Ord d) =>
 build distf prop xs gen = do
   vp <- selectVP distf prop xs gen
   let
-    branch l | length l <= 1 = pure Tip
-             | otherwise = build distf prop l gen -- FIXME termination condition
     (mu, _) = medianDist distf vp xs
     (ll, rr) = V.partition (\x -> distf x vp < mu) xs
+    branch l | length l <= 1 = pure Tip
+             | otherwise = build distf prop l gen -- FIXME termination condition
   ltree <- branch ll
   rtree <- branch rr
   pure $ Bin mu vp ltree rtree
