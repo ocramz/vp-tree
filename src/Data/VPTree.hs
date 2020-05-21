@@ -111,12 +111,23 @@ nearestIO distf k x = go PQ.empty 0
         xmu = mu - xv  -- x to the outer shell
       in
         if xmu < 0
-        then  go acc i rr -- query point is outside the radius mu
+        then
+          do
+            logVar "i" i
+            logVar "mu" mu
+            logVar "xv := d(x, v)" xv
+            logVar "mu - xv" xmu
+            putStrLn "next : R\n"
+            go acc i rr -- query point is outside the radius mu
         else
           do
             let acc' = PQ.insert i xv v acc
             logVar "i" i
-            logVar "acc" acc
+            logVar "mu" mu
+            logVar "xv := d(x, v)" xv
+            logVar "mu - xv" xmu
+            putStrLn "next : L\n" 
+            -- logVar "acc" acc
             go acc' (i + 1) ll
     go acc _ _ | length acc == k = pure acc
     go acc _ Tip = pure acc
