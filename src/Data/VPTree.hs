@@ -82,24 +82,44 @@ http://stevehanov.ca/blog/index.php?id=130
 --
 -- NB : the distance function used here should be the same as the one used to construct the tree in the first place
 
+-- nearest :: (Fractional d, Ord d) =>
+--            (a -> a -> d) -- ^ Distance function
+--         -> Int -- ^ Number of nearest neighbors to return
+--         -> a -- ^ Query point
+--         -> VPTree d a
+--         -> PQ.IntPSQ d a
+-- nearest distf k x = go PQ.empty 0
+--   where
+--     go acc _ _ | length acc == k = acc
+--     go acc _ Tip = acc
+--     go acc i (Bin mu v ll rr)
+--       | xmu < 0 = go acc i rr -- query point is outside the radius mu
+--       | otherwise = let
+--           acc' = PQ.insert i xv v acc
+--           in go acc' (succ i) ll
+--       where
+--         xv = distf x v -- x to vantage point
+--         xmu = mu - xv  -- x to the outer shell
+
+
 nearest :: (Fractional d, Ord d) =>
            (a -> a -> d) -- ^ Distance function
-        -> Int -- ^ Number of nearest neighbors to return
+        -- -> Int -- ^ Number of nearest neighbors to return
         -> a -- ^ Query point
         -> VPTree d a
         -> PQ.IntPSQ d a
-nearest distf k x = go PQ.empty 0
+nearest distf x = go PQ.empty 0 (1/0)
   where
-    go acc _ _ | length acc == k = acc
-    go acc _ Tip = acc
-    go acc i (Bin mu v ll rr)
-      | xmu < 0 = go acc i rr -- query point is outside the radius mu
-      | otherwise = let
-          acc' = PQ.insert i xv v acc
-          in go acc' (succ i) ll
+    go acc _ _ Tip = acc
+    go acc i srad (Bin mu v ll rr)
+      | d < srad' = go acc' (succ i) srad' ll
+      | xmu < 0   = go acc  i        srad  rr
+      | otherwise = go acc  i        srad  ll
       where
-        xv = distf x v -- x to vantage point
-        xmu = mu - xv  -- x to the outer shell
+        acc' = PQ.insert i d v acc
+        d = distf x v -- x to vantage point
+        xmu = mu - d -- x to the outer shell
+        srad' = min srad (abs xmu) -- new search radius
 
 
 
@@ -119,6 +139,7 @@ nearestIO distf k x = go PQ.empty 0
             logVar "xv := d(x, v)" xv
             logVar "mu - xv" xmu
             putStrLn "next : R\n"
+            
             go acc i rr -- query point is outside the radius mu
         else
           do
@@ -128,7 +149,7 @@ nearestIO distf k x = go PQ.empty 0
             logVar "v" v
             logVar "xv := d(x, v)" xv
             logVar "mu - xv" xmu
-            logVar "acc'" acc'
+            -- logVar "acc'" acc'
             putStrLn "next : L\n" 
 
             go acc' (i + 1) ll
