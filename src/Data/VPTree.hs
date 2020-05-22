@@ -40,7 +40,7 @@ import qualified Text.PrettyPrint.Boxes as B (Box, render, emptyBox, vcat, hcat,
 -- deepseq
 import Control.DeepSeq (NFData (rnf))
 -- mwc-probability
-import System.Random.MWC.Probability (Gen, Prob, withSystemRandom, asGenST, asGenIO, GenIO, create, initialize)
+import qualified System.Random.MWC.Probability as P (Gen, Prob, withSystemRandom, asGenST, asGenIO, GenIO, create, initialize, samples, normal, bernoulli)
 -- primitive
 import Control.Monad.Primitive (PrimMonad(..), PrimState)
 -- psqueues
@@ -115,6 +115,7 @@ nearestIO distf k x = go PQ.empty 0
           do
             logVar "i" i
             logVar "mu" mu
+            logVar "v" v
             logVar "xv := d(x, v)" xv
             logVar "mu - xv" xmu
             putStrLn "next : R\n"
@@ -124,10 +125,12 @@ nearestIO distf k x = go PQ.empty 0
             let acc' = PQ.insert i xv v acc
             logVar "i" i
             logVar "mu" mu
+            logVar "v" v
             logVar "xv := d(x, v)" xv
             logVar "mu - xv" xmu
+            logVar "acc'" acc'
             putStrLn "next : L\n" 
-            -- logVar "acc" acc
+
             go acc' (i + 1) ll
     go acc _ _ | length acc == k = pure acc
     go acc _ Tip = pure acc
@@ -176,7 +179,7 @@ build :: (PrimMonad m, RealFrac b, Floating d, Ord d) =>
          (a -> a -> d) -- ^ Distance function
       -> b -- ^ Proportion of remaining dataset to sample at each level
       -> V.Vector a -- ^ Dataset
-      -> Gen (PrimState m)
+      -> P.Gen (PrimState m)
       -> m (VPTree d a)
 build distf prop xs gen = do
   vp <- selectVP distf prop xs gen
@@ -194,7 +197,7 @@ selectVP :: (PrimMonad m, RealFrac b, Foldable f, Ord d, Floating d) =>
             (a -> a -> d) -- ^ distance function
          -> b -- ^ proportion of dataset to sample
          -> f a -- ^ dataset
-         -> Gen (PrimState m)
+         -> P.Gen (PrimState m)
          -> m a
 selectVP distf prop sset gen = do
   ps <- sampleV n sset gen
@@ -219,7 +222,8 @@ logVar w x = putStrLn $ unwords [w, "=", show x]
 -- | Sample _without_ replacement. Returns empty list if we ask for too many samples
 sampleV :: (PrimMonad m, Foldable f) =>
            Int -- ^ Size of sample
-        -> f a -> Gen (PrimState m) -> m (V.Vector a)
+        -> f a
+        -> P.Gen (PrimState m) -> m (V.Vector a)
 sampleV n xs g = V.fromList . fromMaybe [] <$> sample n xs g
 {-# INLINE sampleV #-}
 
@@ -255,17 +259,17 @@ sortV v = runST $ do
 -- | Runs a PRNG action in IO
 --
 -- NB : uses 'withSystemRandom' internally
-withIO :: (GenIO -> IO a) -- ^ Memory bracket for the PRNG
+withIO :: (P.GenIO -> IO a) -- ^ Memory bracket for the PRNG
        -> IO a
-withIO = withSystemRandom . asGenIO
+withIO = P.withSystemRandom . P.asGenIO
 
 -- | Runs a PRNG action in the 'ST' monad, using a fixed seed
 --
 -- NB : uses 'create' internally
-withST_ :: (forall s . Gen s -> ST s a) -- ^ Memory bracket for the PRNG
+withST_ :: (forall s . P.Gen s -> ST s a) -- ^ Memory bracket for the PRNG
         -> a
 withST_ st = runST $ do
-  g <- create
+  g <- P.create
   st g
 
 -- | Runs a PRNG action in the 'ST' monad, using a given random seed
@@ -273,10 +277,10 @@ withST_ st = runST $ do
 -- NB : uses 'initialize' internally
 withST :: (VG.Vector v Word32) =>
           v Word32 -- ^ Random seed
-       -> (forall s . Gen s -> ST s a) -- ^ Memory bracket for the PRNG
+       -> (forall s . P.Gen s -> ST s a) -- ^ Memory bracket for the PRNG
        -> a
 withST seed st = runST $ do
-  g <- initialize seed
+  g <- P.initialize seed
   st g
 
 
@@ -314,8 +318,48 @@ stack t b = B.vcat B.center1 [t, b]
 
 data P = P Double Double
 instance Show P where
-  show (P x y) = show (x,y)
-pps :: V.Vector P
-pps = V.fromList [P 0 1, P 1 2, P 3 4, P 2 4, P (- 2) 3, P (-10) 2, P (-8) 3, P 4 3, P 6 7,  P 10 10, P 20 2, P 15 5]
+  show (P x y) = printf "(%2.2f, %2.2f)" x y --show (x,y)
+
+coin :: PrimMonad m => P.Prob m Bool
+coin = P.bernoulli 0.5
+
+binMixture :: PrimMonad m => Double -> Double -> Double -> Double -> P.Prob m Double
+binMixture mu1 mu2 sig1 sig2 = do
+  b <- coin
+  if b
+    then
+      P.normal mu1 sig1
+    else
+      P.normal mu2 sig2
+
+genN2 :: Int -> V.Vector P
+genN2 n = withST_ $ \g -> do
+  xs <- P.samples n (binMixture 0 10 1 1) g
+  ys <- P.samples n (binMixture 0 10 1 1) g
+  pure $ V.fromList $ zipWith P xs ys
+
+genNormalP :: Double -> Double -> Int -> V.Vector P
+genNormalP mu sig n = withST_ $ \g -> do
+  xs <- P.samples n (P.normal mu sig) g
+  ys <- P.samples n (P.normal mu sig) g
+  pure $ V.fromList $ zipWith P xs ys
+
+vptree :: RealFrac p => V.Vector P -> p -> VPTree Double P
+vptree ps p = withST_ $ build distp p ps
+
+t1 = vptree pps
+
+t2 = vptree pps2
+
+-- tpps :: RealFrac p => p -> VPTree Double P
+-- tpps p = withST_ $ build distp p pps
+
+pps, pps2 :: V.Vector P
+pps = genNormalP 0 3 50
+
+pps2 = genN2 50 -- binary mixture of 2d normals
+
+-- pps :: V.Vector P
+-- pps = V.fromList [P 0 1, P 1 2, P 3 4, P 2 4, P (- 2) 3, P (-10) 2, P (-8) 3, P 4 3, P 6 7,  P 10 10, P 20 2, P 15 5]
 distp :: P -> P -> Double
 distp (P x1 y1) (P x2 y2) = sqrt $ (x1 - x2)**2 + (y1 - y2)**2
