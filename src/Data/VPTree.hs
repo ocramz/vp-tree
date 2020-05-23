@@ -41,6 +41,8 @@ import Text.Printf (PrintfArg, printf)
 
 -- boxes
 import qualified Text.PrettyPrint.Boxes as B (Box, render, emptyBox, vcat, hcat, text, top, bottom, center1)
+-- containers
+import qualified Data.Set as S (Set, fromList, difference)
 -- deepseq
 import Control.DeepSeq (NFData (rnf))
 -- -- depq
@@ -56,7 +58,7 @@ import Numeric.Sampling (sample)
 -- --transformers
 -- import Control.Monad.Trans.State.Lazy (StateT, get, put, execStateT)
 -- vector
-import qualified Data.Vector as V (Vector, map, toList, replicate, partition, zipWith, head, tail, fromList, thaw, freeze, (!))
+import qualified Data.Vector as V (Vector, map, length, toList, replicate, partition, zipWith, head, tail, fromList, thaw, freeze, (!))
 import qualified Data.Vector.Generic as VG (Vector(..))
 import Data.Vector.Generic.Mutable (MVector)
 -- vector-algorithms
@@ -266,30 +268,52 @@ buildVT distf prop xs gen = do
   pure $ Bin mu vp ltree rtree
 
 -- | Select a vantage point
-selectVP :: (PrimMonad m, RealFrac b, Foldable f, Ord d, Floating d) =>
+selectVP :: (PrimMonad m, RealFrac b, Ord d, Floating d) =>
             (a -> a -> d) -- ^ distance function
          -> b -- ^ proportion of dataset to sample
-         -> f a -- ^ dataset
+         -> V.Vector a -- ^ dataset
          -> P.Gen (PrimState m)
          -> m a
 selectVP distf prop sset gen = do
-  ps <- sampleV n sset gen
-  let pstart = V.head ps
-      ptail = V.tail ps
+  (ps, psc) <- randomSplit n sset gen
+  (pstartv, ptail) <- randomSplit 1 ps gen -- ^ Pick a random starting point
+  let pstart = V.head pstartv
+      pickMu (spread_curr, p_curr) p = do
+        ds <- sampleV n psc gen
+        let (mu, dists) = medianDist distf p ds
+            spread = variance dists (V.replicate n mu)
+        if spread > spread_curr
+          then pure (spread, p)
+          else pure (spread_curr, p_curr)
   snd <$> foldlM pickMu (0, pstart) ptail
   where
     n = floor (prop * fromIntegral ndata)
     ndata = length sset -- size of dataset at current level
-    pickMu (spread_curr, p_curr) p = do
-      ds <- sampleV n sset gen
-      let (mu, dists) = medianDist distf p ds
-          spread = variance dists (V.replicate n mu)
-      if spread > spread_curr
-        then pure (spread, p)
-        else pure (spread_curr, p_curr)
 
 
 
+-- | Compute a random split of the dataset
+--
+-- Invariant : the concatenation of the two resulting vectors is a permutation of the input vector
+--
+-- NB if the sample size is larger than the dataset the first of the two vectors will be of length 0 and the second will be identical to the input
+randomSplit :: PrimMonad m =>
+               Int -- ^ Sample size
+            -> V.Vector a -- ^ Dataset
+            -> P.Gen (PrimState m)
+            -> m (V.Vector a, V.Vector a)
+randomSplit n vv gen = split <$> sampl
+  where
+    sampl = fromMaybe [] <$> sample n ixs gen
+    split xs = (vxs, vxsc)
+      where
+        ixss = S.fromList xs
+        ixsc = ixs `S.difference` ixss
+        vxs  = pickItems ixss
+        vxsc = pickItems ixsc
+    m = V.length vv
+    ixs = S.fromList [0 .. m - 1]
+    pickItems = V.fromList . foldl (\acc i -> vv V.! i : acc) []
 
 -- | Sample _without_ replacement. Returns empty list if we ask for too many samples
 sampleV :: (PrimMonad m, Foldable f) =>
