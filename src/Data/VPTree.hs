@@ -3,7 +3,8 @@
 {-# language BangPatterns #-}
 {-# language DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
 {-# language LambdaCase #-}
--- {-# options_ghc -Wno-unused-imports -Wno-type-defaults -Wno-name-shadowing #-}
+{-# language DeriveDataTypeable #-}
+
 {-# options_ghc -Wno-type-defaults #-}
 {-# options_ghc -Wno-unused-top-binds #-}
 {-# options_ghc -Wno-unused-imports #-}
@@ -24,19 +25,22 @@ module Data.VPTree
   -- ** Rendering trees
   , draw
   -- ** Random number generation
-  -- *** IO 
+  -- *** IO
   , withIO
   -- *** ST
   , withST, withST_
   )
   where
 
+import Control.Monad.IO.Class (MonadIO(..))
 import Data.Foldable (foldlM)
 import qualified Data.Foldable as F (Foldable(..))
 -- import Data.Ord (Down(..))
 import Data.Word (Word32)
+-- import Control.Exception (Exception(..))
 import Control.Monad.ST (ST, runST)
 import Data.Maybe (fromMaybe)
+import Data.Typeable (Typeable)
 import Text.Printf (PrintfArg, printf)
 
 -- boxes
@@ -48,6 +52,8 @@ import qualified Data.Sequence as SQ (Seq)
 import Control.DeepSeq (NFData (rnf))
 -- depq
 import qualified Data.DEPQ as DQ (DEPQ, empty, size, insert, bottomK)
+-- exceptions
+import Control.Monad.Catch (MonadThrow(..))
 -- mwc-probability
 import qualified System.Random.MWC.Probability as P (Gen, Prob, withSystemRandom, asGenIO, GenIO, create, initialize, samples, normal, bernoulli)
 -- primitive
@@ -57,6 +63,7 @@ import qualified Data.IntPSQ as PQ (IntPSQ, empty, size, insert, findMin, delete
 -- sampling
 import Numeric.Sampling (sample)
 -- transformers
+import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Maybe (MaybeT(..), runMaybeT)
 -- import Control.Monad.Trans.State.Lazy (StateT, get, put, execStateT)
 -- vector
@@ -124,7 +131,7 @@ subtrees are then pruned when the metric information stored in the tree suffices
 --              (p2 -> a -> p1) -> p2 -> VT p1 a -> DQ.DEPQ p1 a
 -- nearestVT distf x = z
 --   where
---     z = go DQ.empty 0 tau0 
+--     z = go DQ.empty 0 tau0
 --     tau0 = 1/0 -- initial search radius
 --     go acc _ _ Tip = acc
 --     go acc i tau (Bin mu v ll rr)
@@ -147,7 +154,7 @@ subtrees are then pruned when the metric information stored in the tree suffices
 --     go _ _ Tip = Nothing
 --     go i tau (Bin mu v ll rr)
 --       | xmu < 0 = go i tau' rr -- query point is in outer half-population
---       | d < tau = Just v 
+--       | d < tau = Just v
 --       | otherwise = go i tau' ll
 --       where
 --         d    = distf x v -- x to vp
@@ -233,8 +240,8 @@ subtrees are then pruned when the metric information stored in the tree suffices
 --         acc'  = PQ.insert i d v acc
 --         maxd' = max maxd d -- next search radius
 
-logVar :: Show a => String -> a -> IO ()
-logVar w x = putStrLn $ unwords [w, "=", show x]
+logVar :: (MonadIO io, Show a) => String -> a -> io ()
+logVar w x = liftIO $ putStrLn $ unwords [w, "=", show x]
 
 {-
 At any given step we are working with a node of the tree that has a
@@ -246,10 +253,10 @@ The query point x will be some distance d from v.
 
 If d is less than mu then use the algorithm recursively to search the subtree of the node that contains the points closer to v than mu; otherwise recurse to the subtree of the node that contains the points that are farther than the vantage point than mu.
 
-If the recursive use of the algorithm finds a neighboring point n with distance to x that is less than |mu − d| then it cannot help to search the other subtree of this node; the discovered node n is returned. Otherwise, the other subtree also needs to be searched recursively. 
+If the recursive use of the algorithm finds a neighboring point n with distance to x that is less than |mu − d| then it cannot help to search the other subtree of this node; the discovered node n is returned. Otherwise, the other subtree also needs to be searched recursively.
 -}
 
--- nnnn distf k tr x = z 
+-- nnnn distf k tr x = z
 --   where
 --     (z, _, _) = go PQ.empty 0 maxd0 tr
 --     maxd0 = 0
@@ -267,9 +274,9 @@ If the recursive use of the algorithm finds a neighboring point n with distance 
 --         acc' = PQ.insert i d v acc
 --         maxd' = max maxd (abs xmu) -- next search radius
 --         q1 = d < xmu
---         q2 = PQ.size acc == k 
+--         q2 = PQ.size acc == k
 
-      
+
 
 
 
@@ -282,13 +289,13 @@ If the recursive use of the algorithm finds a neighboring point n with distance 
 --     go acc _ _ Tip = acc
 --     go acc i srad (Bin mu v ll rr)
 --       | xmu < 0 = go acc i srad rr -- query point is outside the radius mu
-      
---       -- | xv < xmu = go acc i srad ll 
+
+--       -- | xv < xmu = go acc i srad ll
 --       -- | otherwise = let
 --       --     acc' = PQ.insert i xv v acc
 --       --     srad' = min mu srad -- new search radius
 --       --     in go acc' (i + 1) srad' ll -- FIXME double check this
-      
+
 --       where
 --         xv = distf x v -- x to vantage point
 --         xmu = mu - xv  -- x to the outer shell
@@ -298,28 +305,28 @@ If the recursive use of the algorithm finds a neighboring point n with distance 
 
 
 -- | Build a 'VPTree'
-buildVT :: (PrimMonad m, RealFrac b, Floating d, Ord d, Eq a) =>
-           (a -> a -> d) -- ^ Distance function
-        -> b -- ^ Proportion of remaining dataset to sample at each level
-        -> V.Vector a -- ^ Dataset
-        -> P.Gen (PrimState m)
-        -> m (Maybe (VT d a))
-buildVT distf prop xss gen = runMaybeT $ go xss
+-- buildVT :: (PrimMonad m, RealFrac b, Floating d, Ord d, Eq a) =>
+--            (a -> a -> d) -- ^ Distance function
+--         -> b -- ^ Proportion of remaining dataset to sample at each level
+--         -> V.Vector a -- ^ Dataset
+--         -> P.Gen (PrimState m)
+--         -> m (VT d a)
+buildVT distf prop xss gen = go xss
   where
     go xs = do
-      vp <- selectVP distf prop xs gen
-
-      let
-        xs' = V.filter (/= vp) xs
-        (mu, _) = medianDist distf vp xs'
-        (ll, rr) = V.partition (\x -> distf x vp < mu) xs'
-        branch l | length l == 1 = pure $ Tip (V.head l)
-                 | null l = pure Nil
-                 | otherwise = go l
-
-      ltree <- branch ll
-      rtree <- branch rr
-      pure $ Bin mu vp ltree rtree
+      mm <- selectVP distf prop xs gen
+      case mm of
+        Nothing -> pure Nil
+        Just (mu, vp) -> do
+          let
+            xs' = V.filter (/= vp) xs
+            (ll, rr) = V.partition (\x -> distf x vp < mu) xs'
+            branch l | length l == 1 = pure $ Tip (V.head l)
+                     | null l = pure Nil
+                     | otherwise = go l
+          ltree <- branch ll
+          rtree <- branch rr
+          pure $ Bin mu vp ltree rtree
 
 
 -- | Select a vantage point
@@ -328,40 +335,57 @@ selectVP :: (PrimMonad m, RealFrac b, Ord d, Floating d) =>
          -> b -- ^ proportion of dataset to sample
          -> V.Vector a -- ^ dataset
          -> P.Gen (PrimState m)
-         -> MaybeT m a
-selectVP distf prop sset gen = do
+         -> m (Maybe (d, a))
+selectVP distf prop sset gen = runMaybeT $ do
   (ps, psc) <- randomSplit n sset gen
-  (pstartv, ptail) <- randomSplit 1 ps gen -- ^ Pick a random starting point in ps
-
+  (pstartv, ptail) <- randomSplit 1 ps gen -- Pick a random starting point from ps
   let pstart = V.head pstartv
-
       pickMu (spread_curr, p_curr) p = do
-        ds <- sampleV n2 psc gen
-        let (mu, dists) = medianDist distf p ds
-            spread = variance dists (V.replicate n mu)
+        ds <- sampleV n2 psc gen -- sample n2 < n points from psc
+        (mu, dists) <- liftMaybeT $ medianDist distf p ds
+        let spread = variance dists (V.replicate n2 mu)
         if spread > spread_curr
           then pure (spread, p)
           else pure (spread_curr, p_curr)
+  foldlM pickMu (0, pstart) ptail
+  where
+    n = floor (prop * fromIntegral ndata)
+    n2 = floor (prop * fromIntegral n)
+    ndata = length sset -- size of dataset at current level
 
-  snd <$> foldlM pickMu (0, pstart) ptail
-
+selectVP' distf prop sset gen = runMaybeT $ do
+  (ps, psc) <- randomSplit n sset gen
+  (pstartv, ptail) <- randomSplit 1 ps gen -- Pick a random starting point from ps
+  let pstart = V.head pstartv
+      pickMu (spread_curr, p_curr) p = do
+        logVar "p_curr" p_curr
+        ds <- sampleV n2 psc gen -- sample n2 < n points from psc
+        (mu, dists) <- liftMaybeT $ medianDist distf p ds
+        let spread = variance dists (V.replicate n2 mu)
+        if spread > spread_curr
+          then pure (spread, p)
+          else pure (spread_curr, p_curr)
+  foldlM pickMu (0, pstart) ptail
   where
     n = floor (prop * fromIntegral ndata)
     n2 = floor (prop * fromIntegral n)
     ndata = length sset -- size of dataset at current level
 
 
+liftMaybeT :: Applicative m => Maybe a -> MaybeT m a
+liftMaybeT = MaybeT . pure
 
--- | Compute a random split of the dataset
+
+-- | Sample a random split of the dataset
 --
 -- Invariant : the concatenation of the two resulting vectors is a permutation of the input vector
 --
--- NB if the sample size is larger than the dataset the first of the two vectors will be of length 0 and the second will be identical to the input
-randomSplit :: PrimMonad m =>
+-- NB : Will return Nothing if the required sample size is too large
+randomSplit :: (PrimMonad m) =>
                Int -- ^ Sample size
             -> V.Vector a -- ^ Dataset
             -> P.Gen (PrimState m)
-            -> MaybeT m (V.Vector a, V.Vector a)
+            -> MaybeT m (V.Vector a, V.Vector a) -- ^ (sample, complementary sample)
 randomSplit n vv gen = MaybeT $ fmap split <$> sampl
   where
     sampl = sample n ixs gen
@@ -376,27 +400,28 @@ randomSplit n vv gen = MaybeT $ fmap split <$> sampl
     pickItems = V.fromList . foldl (\acc i -> vv V.! i : acc) []
 
 
-sampleV' ::
-  (PrimMonad m, Foldable f) => Int -> f a -> P.Gen (PrimState m) -> MaybeT m [a]
-sampleV' n xs g = MaybeT $ sample n xs g
-
--- | Sample _without_ replacement. Returns empty list if we ask for too many samples
+-- | Sample _without_ replacement. Returns empty list if required sample size is too large
 sampleV :: (PrimMonad m, Foldable f) =>
            Int -- ^ Size of sample
         -> f a
-        -> P.Gen (PrimState m) -> m (V.Vector a)
-sampleV n xs g = V.fromList . fromMaybe [] <$> sample n xs g
+        -> P.Gen (PrimState m) -> MaybeT m (V.Vector a)
+sampleV n xs g = MaybeT $ fmap V.fromList <$> sample n xs g
 {-# INLINE sampleV #-}
 
-medianDist :: Ord d => (t -> p -> d) -> p -> V.Vector t -> (d, V.Vector d)
-medianDist distf p ds = (mu, dists)
+medianDist :: (Ord d) => (t -> p -> d) -> p -> V.Vector t -> Maybe (d, V.Vector d)
+medianDist distf p ds =
+  case mmu of
+    Nothing -> Nothing
+    Just mu -> Just (mu, dists)
   where
-    mu = median dists
+    mmu = median dists
     dists = V.map (`distf` p) ds
 {-# INLINE medianDist #-}
 
-median :: Ord a => V.Vector a -> a
-median xs = sortV xs V.! floor (fromIntegral n / 2) -- FIXME when n is < 1 ?
+median :: Ord a => V.Vector a -> Maybe a
+median xs
+  | n <= 1 = Nothing
+  | otherwise = Just $sortV xs V.! floor (fromIntegral n / 2)
   where n = length xs
 {-# INLINE median #-}
 
@@ -460,6 +485,7 @@ toBox = \case
   (Bin d x tl tr) ->
     txt (node x d) `stack` (toBox tl `byside` toBox tr)
   Tip x -> txt $ show x
+  Nil   -> txt "*"
   where
     node x d = printf "%s,%5.2f" (show x) d
     -- nodeBox x d =
@@ -494,6 +520,7 @@ distp (P x1 y1) (P x2 y2) = sqrt $ (x1 - x2)**2 + (y1 - y2)**2
 genN2 :: Int -> V.Vector P
 genN2 n = V.fromList $ withST_ (P.samples n (binMix 0 20 1 1))
 
+-- | binary mixture of isotropic 2d normal distribs
 binMix :: PrimMonad m =>
           Double -> Double -> Double -> Double -> P.Prob m P
 binMix mu1 mu2 sig1 sig2 = do
@@ -515,7 +542,3 @@ tt n = vptree (genN2 n)
 
 -- vptree :: RealFrac p => V.Vector P -> p -> VT Double P
 vptree ps p = withST_ $ buildVT distp p ps
-
-
-
-

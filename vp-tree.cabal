@@ -19,12 +19,13 @@ library
   ghc-options:         -Wall
   hs-source-dirs:      src
   exposed-modules:     Data.VPTree
-  other-modules:       Data.MaxPQ
+  -- other-modules:       Data.MaxPQ
   build-depends:       base >= 4.7 && < 5
                      , boxes
                      , containers
                      , deepseq
-                     , depq >= 0.3 
+                     , depq >= 0.3
+                     , exceptions
                      , mwc-probability
                      , primitive
                      , psqueues
