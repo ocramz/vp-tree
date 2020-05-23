@@ -29,7 +29,7 @@ library
                      , primitive
                      , psqueues
                      , sampling
-                     -- , transformers
+                     , transformers
                      , vector
                      , vector-algorithms
 
