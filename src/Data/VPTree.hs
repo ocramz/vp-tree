@@ -3,7 +3,11 @@
 {-# language BangPatterns #-}
 {-# language DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
 {-# language LambdaCase #-}
-{-# options_ghc -Wno-unused-imports -Wno-type-defaults -Wno-name-shadowing #-}
+-- {-# options_ghc -Wno-unused-imports -Wno-type-defaults -Wno-name-shadowing #-}
+{-# options_ghc -Wno-type-defaults #-}
+{-# options_ghc -Wno-unused-top-binds #-}
+{-# options_ghc -Wno-unused-imports #-}
+{-# options_ghc -Wno-missing-signatures -Wno-name-shadowing #-}
 {- | Vantage point trees
 
 Data structures and algorithms for nearest neighbor search in general metric spaces - P. N. Yianilos
@@ -28,19 +32,21 @@ module Data.VPTree
   where
 
 import Data.Foldable (foldlM)
-import Data.Ord (Down(..))
+import qualified Data.Foldable as F (Foldable(..))
+-- import Data.Ord (Down(..))
 import Data.Word (Word32)
 import Control.Monad.ST (ST, runST)
-import Data.List (partition)
 import Data.Maybe (fromMaybe)
-import Text.Printf (PrintfArg, printf, PrintfType)
+import Text.Printf (PrintfArg, printf)
 
 -- boxes
 import qualified Text.PrettyPrint.Boxes as B (Box, render, emptyBox, vcat, hcat, text, top, bottom, center1)
 -- deepseq
 import Control.DeepSeq (NFData (rnf))
+-- -- depq
+-- import qualified Data.DEPQ as DQ (DEPQ, empty, size, insert, findMin, deleteMin)
 -- mwc-probability
-import qualified System.Random.MWC.Probability as P (Gen, Prob, withSystemRandom, asGenST, asGenIO, GenIO, create, initialize, samples, normal, bernoulli)
+import qualified System.Random.MWC.Probability as P (Gen, Prob, withSystemRandom, asGenIO, GenIO, create, initialize, samples, normal, bernoulli)
 -- primitive
 import Control.Monad.Primitive (PrimMonad(..), PrimState)
 -- psqueues
@@ -56,23 +62,51 @@ import Data.Vector.Generic.Mutable (MVector)
 -- vector-algorithms
 import qualified Data.Vector.Algorithms.Merge as V (sort, Comparison)
 
-import qualified Data.MaxPQ as MQ (MaxPQ, empty, insert, size, findMax)
+-- import qualified Data.MaxPQ as MQ (MaxPQ, empty, insert, size, findMax, toList)
 
 
 -- | Vantage point tree
-data VPTree d a = Bin  !d !a !(VPTree d a) !(VPTree d a)
-                -- | Sing !d !a
-                | Tip
-                deriving (Show, Functor, Foldable, Traversable)
+data VPTree d a = VPT {
+  vpTree :: VT d a
+  , vptDistFun :: a -> a -> d -- ^ Distance function used to construct the tree
+                   }
+instance (Eq d, Eq a) => Eq (VPTree d a) where
+  (VPT t1 _) == (VPT t2 _) = t1 == t2
 
-instance (NFData d, NFData a) => NFData (VPTree d a) where
+instance (Show d, Show a) => Show (VPTree d a) where
+  show (VPT t _) = show t
+
+
+nearest :: (Num d, Ord d) =>
+           VPTree d a
+        -> Int
+        -> a
+        -> PQ.IntPSQ d a
+nearest (VPT t df) k x = nearestVT df k t x
+
+build :: (PrimMonad m, RealFrac b, Floating d, Ord d) =>
+         (a -> a -> d)
+      -> b
+      -> V.Vector a
+      -> P.Gen (PrimState m)
+      -> m (VPTree d a)
+build df prop xs gen = do
+  t <- buildVT df prop xs gen
+  pure $ VPT t df
+
+-- | Vantage point tree (internal representation)
+data VT d a = Bin  !d !a !(VT d a) !(VT d a)
+            | Tip
+            deriving (Eq, Show, Functor, Foldable, Traversable)
+
+instance (NFData d, NFData a) => NFData (VT d a) where
   rnf (Bin d x tl tr) = rnf d `seq` rnf x `seq` rnf tl `seq` rnf tr
   rnf Tip = ()
 
 
 
 
-{- VPT construction and querying : 
+{- VPT construction and querying :
 http://stevehanov.ca/blog/index.php?id=130
 -}
 
@@ -80,81 +114,114 @@ http://stevehanov.ca/blog/index.php?id=130
 
 -- | Query a 'VPTree' for nearest neighbors
 --
--- NB : the distance function used here should be the same as the one used to construct the tree in the first place
+-- NB : the distance function used here should be the same as the one used to construct the tree in the first place, otherwise
 
 -- nearest :: (Fractional d, Ord d) =>
 --            (a -> a -> d) -- ^ Distance function
---         -> Int -- ^ Number of nearest neighbors to return
+--         -- -> Int -- ^ Number of nearest neighbors to return
 --         -> a -- ^ Query point
 --         -> VPTree d a
 --         -> PQ.IntPSQ d a
--- nearest distf k x = go PQ.empty 0
+-- nearest distf x = go PQ.empty 0 (1/0)
 --   where
---     go acc _ _ | length acc == k = acc
---     go acc _ Tip = acc
---     go acc i (Bin mu v ll rr)
---       | xmu < 0 = go acc i rr -- query point is outside the radius mu
---       | otherwise = let
---           acc' = PQ.insert i xv v acc
---           in go acc' (succ i) ll
+--     go acc _ _ Tip = acc
+--     go acc i srad (Bin mu v ll rr)
+--       | d < srad' = go acc' (succ i) srad' ll
+--       | xmu < 0   = go acc  i        srad  rr
+--       | otherwise = go acc  i        srad  ll
 --       where
---         xv = distf x v -- x to vantage point
---         xmu = mu - xv  -- x to the outer shell
+--         acc' = PQ.insert i d v acc
+--         d = distf x v -- x to vantage point
+--         xmu = mu - d -- x to the outer shell
+--         srad' = min srad (abs xmu) -- new search radius
 
-
-nearest :: (Fractional d, Ord d) =>
-           (a -> a -> d) -- ^ Distance function
-        -- -> Int -- ^ Number of nearest neighbors to return
-        -> a -- ^ Query point
-        -> VPTree d a
-        -> PQ.IntPSQ d a
-nearest distf x = go PQ.empty 0 (1/0)
+nearestVT :: (Num d, Ord d) =>
+             (a -> a -> d)
+          -> Int
+          -> VT d a
+          -> a
+          -> PQ.IntPSQ d a
+nearestVT distf k tr x = go PQ.empty 0 maxd0 tr
   where
-    go acc _ _ Tip = acc
-    go acc i srad (Bin mu v ll rr)
-      | d < srad' = go acc' (succ i) srad' ll
-      | xmu < 0   = go acc  i        srad  rr
-      | otherwise = go acc  i        srad  ll
+    maxd0 = 0 -- initial search radius
+    go acc _ _    Tip              = acc
+    go acc i maxd (Bin mu v ll rr)
+      | xmu < 0 = go acc i maxd' rr -- query point is in outer half-population
+      | otherwise =
+        let
+          q1 = xmu > maxd' -- x is farther from the outer shell than farthest point
+          q2 = PQ.size acc == k
+        in if q1 || q2
+           then acc
+           else go acc' (succ i) maxd' ll
       where
-        acc' = PQ.insert i d v acc
-        d = distf x v -- x to vantage point
-        xmu = mu - d -- x to the outer shell
-        srad' = min srad (abs xmu) -- new search radius
+        d     = distf x v -- x to vp
+        xmu   = mu - d -- x to outer shell
+        acc'  = PQ.insert i d v acc
+        maxd' = max maxd d -- next search radius
 
+logVar :: Show a => String -> a -> IO ()
+logVar w x = putStrLn $ unwords [w, "=", show x]
 
+{-
+At any given step we are working with a node of the tree that has a
 
-nearestIO distf k x = go PQ.empty 0
+vantage point v
+threshold distance mu.
+
+The query point x will be some distance d from v.
+
+If d is less than mu then use the algorithm recursively to search the subtree of the node that contains the points closer to v than mu; otherwise recurse to the subtree of the node that contains the points that are farther than the vantage point than mu.
+
+If the recursive use of the algorithm finds a neighboring point n with distance to x that is less than |mu − d| then it cannot help to search the other subtree of this node; the discovered node n is returned. Otherwise, the other subtree also needs to be searched recursively. 
+-}
+
+nnnn distf k tr x = go PQ.empty 0 maxd0 tr
   where
-    go acc i (Bin mu v ll rr) =
+    maxd0 = 0
+    go acc _ _    Tip = acc
+    go acc i maxd (Bin mu v ll rr) =
       let
-        xv = distf x v -- x to vantage point
-        xmu = mu - xv  -- x to the outer shell
+        d = distf x v
+        xmu = mu - d
+        -- acc'
+        --   | d < maxd' = PQ.insert i d v acc
+        --   | otherwise = acc
+        acc' = PQ.insert i d v acc
+        maxd' = max maxd d -- next search radius
       in
-        if xmu < 0
-        then
-          do
-            logVar "i" i
-            logVar "mu" mu
-            logVar "v" v
-            logVar "xv := d(x, v)" xv
-            logVar "mu - xv" xmu
-            putStrLn "next : R\n"
-            
-            go acc i rr -- query point is outside the radius mu
-        else
-          do
-            let acc' = PQ.insert i xv v acc
-            logVar "i" i
-            logVar "mu" mu
-            logVar "v" v
-            logVar "xv := d(x, v)" xv
-            logVar "mu - xv" xmu
-            -- logVar "acc'" acc'
-            putStrLn "next : L\n" 
+        if d < mu
+        then go acc' (succ i) maxd' ll
+        else go acc' (succ i) maxd' rr
+      
 
-            go acc' (i + 1) ll
-    go acc _ _ | length acc == k = pure acc
-    go acc _ Tip = pure acc
+
+
+-- nearestVTIO distf k tr x = go PQ.empty 0 maxd0 tr
+--   where
+--     maxd0 = 0 -- initial search radius
+--     go acc _ _    Tip              = pure acc
+--     go acc i maxd (Bin mu v ll rr)
+--       | xmu < 0 = go acc i maxd rr -- query point is in outer half-population
+--       | otherwise = do
+--         let
+--           q1 = xmu > maxd' -- x is farther from the outer shell than farthest point
+--           q2 = PQ.size acc == k
+--         logVar "v" v
+--         logVar "d" d
+--         logVar "(mu - d)" xmu
+--         logVar "maxd'" maxd'
+--         putStrLn ""
+--         if q1 || q2
+--           then
+--                pure acc
+--            else go acc' (succ i) maxd' ll
+--       where
+--         d     = distf x v -- x to vp
+--         xmu   = mu - d -- x to outer shell
+--         acc'  = PQ.insert i d v acc
+--         maxd' = max maxd d -- next search radius
+
 
 
 -- nearest distf x = go PQ.empty 0 (1/0)
@@ -177,38 +244,20 @@ nearestIO distf k x = go PQ.empty 0
 
 
 
--- -- | keep track of the distance function used when constructing the tree
--- data VPT d a = VPT {
---     vpTree :: VPTree d a
---   , vptDistFun :: a -> a -> d
---                    }
-
--- -- nearestVPT :: (Fractional t, Ord t) => VPT t a -> a -> PQ.IntPSQ t a
--- nearestVPT (VPT t df) x = nearest df x t
-
--- buildVPT :: (PrimMonad m, RealFrac b, Floating d, Ord d) =>
---             (a -> a -> d)
---          -> b -> V.Vector a -> Gen (PrimState m) -> m (VPT d a)
--- buildVPT df prop xs gen = do
---   t <- build df prop xs gen
---   pure $ VPT t df
-
-
-
 -- | Build a 'VPTree'
-build :: (PrimMonad m, RealFrac b, Floating d, Ord d) =>
+buildVT :: (PrimMonad m, RealFrac b, Floating d, Ord d) =>
          (a -> a -> d) -- ^ Distance function
       -> b -- ^ Proportion of remaining dataset to sample at each level
       -> V.Vector a -- ^ Dataset
       -> P.Gen (PrimState m)
-      -> m (VPTree d a)
-build distf prop xs gen = do
+      -> m (VT d a)
+buildVT distf prop xs gen = do
   vp <- selectVP distf prop xs gen
   let
     (mu, _) = medianDist distf vp xs
     (ll, rr) = V.partition (\x -> distf x vp < mu) xs
     branch l | length l <= 1 = pure Tip
-             | otherwise = build distf prop l gen -- FIXME termination condition
+             | otherwise = buildVT distf prop l gen -- FIXME termination condition
   ltree <- branch ll
   rtree <- branch rr
   pure $ Bin mu vp ltree rtree
@@ -237,8 +286,7 @@ selectVP distf prop sset gen = do
         else pure (spread_curr, p_curr)
 
 
-logVar :: Show a => String -> a -> IO ()
-logVar w x = putStrLn $ unwords [w, "=", show x]
+
 
 -- | Sample _without_ replacement. Returns empty list if we ask for too many samples
 sampleV :: (PrimMonad m, Foldable f) =>
@@ -286,7 +334,7 @@ withIO = P.withSystemRandom . P.asGenIO
 
 -- | Runs a PRNG action in the 'ST' monad, using a fixed seed
 --
--- NB : uses 'create' internally
+-- NB : uses 'P.create' internally
 withST_ :: (forall s . P.Gen s -> ST s a) -- ^ Memory bracket for the PRNG
         -> a
 withST_ st = runST $ do
@@ -295,7 +343,7 @@ withST_ st = runST $ do
 
 -- | Runs a PRNG action in the 'ST' monad, using a given random seed
 --
--- NB : uses 'initialize' internally
+-- NB : uses 'P.initialize' internally
 withST :: (VG.Vector v Word32) =>
           v Word32 -- ^ Random seed
        -> (forall s . P.Gen s -> ST s a) -- ^ Memory bracket for the PRNG
@@ -308,11 +356,11 @@ withST seed st = runST $ do
 
 -- | Draw a tree
 --
--- NB : prints distance information up to two decimal digits
+-- NB : prints distance information rounded to two decimal digits
 draw :: (Show a, PrintfArg d) => VPTree d a -> IO ()
-draw = putStrLn . B.render . toBox
+draw = putStrLn . B.render . toBox . vpTree
 
-toBox :: (Show a, PrintfArg d) => VPTree d a -> B.Box
+toBox :: (Show a, PrintfArg d) => VT d a -> B.Box
 toBox = \case
   (Bin d x tl tr) ->
     nodeBox x d `stack` (toBox tl `byside` toBox tr)
@@ -365,11 +413,11 @@ genNormalP mu sig n = withST_ $ \g -> do
   ys <- P.samples n (P.normal mu sig) g
   pure $ V.fromList $ zipWith P xs ys
 
-vptree :: RealFrac p => V.Vector P -> p -> VPTree Double P
-vptree ps p = withST_ $ build distp p ps
+-- vptree :: RealFrac p => V.Vector P -> p -> VPTree Double P
+vptree ps p = withST_ $ buildVT distp p ps
 
+-- t1, t2 :: Double -> VPTree Double P
 t1 = vptree pps
-
 t2 = vptree pps2
 
 -- tpps :: RealFrac p => p -> VPTree Double P

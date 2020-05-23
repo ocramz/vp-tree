@@ -22,7 +22,9 @@ library
   other-modules:       Data.MaxPQ
   build-depends:       base >= 4.7 && < 5
                      , boxes
+                     , containers
                      , deepseq
+                     , depq >= 0.3 
                      , mwc-probability
                      , primitive
                      , psqueues

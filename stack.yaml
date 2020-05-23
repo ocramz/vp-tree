@@ -2,3 +2,6 @@ resolver: lts-14.27
 
 packages:
 - .
+
+extra-deps:
+- depq-0.3.0.0@sha256:3e5df0aff68c2bcb9416a4a0063fc462ac8127f3b0591bf31aa544de27ddca5b,1229
