@@ -176,23 +176,26 @@ If d is less than mu then use the algorithm recursively to search the subtree of
 If the recursive use of the algorithm finds a neighboring point n with distance to x that is less than |mu − d| then it cannot help to search the other subtree of this node; the discovered node n is returned. Otherwise, the other subtree also needs to be searched recursively. 
 -}
 
-nnnn distf k tr x = go PQ.empty 0 maxd0 tr
+nnnn distf k tr x = z 
   where
+    (z, _, _) = go PQ.empty 0 maxd0 tr
     maxd0 = 0
-    go acc _ _    Tip = acc
-    go acc i maxd (Bin mu v ll rr) =
-      let
+    go acc i maxd Tip = (acc, i, maxd)
+    go acc i maxd (Bin mu v ll rr)
+      | q1 || q2 = go acc' (succ i)  maxd' ll -- x closer to v than to shell
+      | d < mu =   -- x inside shell but not closer to v
+        let
+          (accl, il, maxdl) = go acc i maxd' ll
+        in go accl il maxdl rr
+      | otherwise = go acc i maxd' rr -- x outside shell
+      where
         d = distf x v
         xmu = mu - d
-        -- acc'
-        --   | d < maxd' = PQ.insert i d v acc
-        --   | otherwise = acc
         acc' = PQ.insert i d v acc
-        maxd' = max maxd d -- next search radius
-      in
-        if d < mu
-        then go acc' (succ i) maxd' ll
-        else go acc' (succ i) maxd' rr
+        maxd' = max maxd (abs xmu) -- next search radius
+        q1 = d < xmu
+        q2 = PQ.size acc == k 
+
       
 
 
