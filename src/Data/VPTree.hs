@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 {-# language BangPatterns #-}
-{-# language DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
+{-# language DeriveFunctor, DeriveFoldable, DeriveTraversable, GeneralizedNewtypeDeriving #-}
 {-# language LambdaCase #-}
 {-# language DeriveDataTypeable #-}
 
@@ -32,6 +32,7 @@ module Data.VPTree
   )
   where
 
+import Control.Applicative (Alternative(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Foldable (foldlM)
 import qualified Data.Foldable as F (Foldable(..))
@@ -54,8 +55,11 @@ import Control.DeepSeq (NFData (rnf))
 import qualified Data.DEPQ as DQ (DEPQ, empty, size, insert, bottomK)
 -- exceptions
 import Control.Monad.Catch (MonadThrow(..))
+-- mtl
+import Control.Monad.Reader (MonadReader(..), asks)
+import Control.Monad.Writer (MonadWriter(..))
 -- mwc-probability
-import qualified System.Random.MWC.Probability as P (Gen, Prob, withSystemRandom, asGenIO, GenIO, create, initialize, samples, normal, bernoulli)
+import qualified System.Random.MWC.Probability as P (Gen, Prob, withSystemRandom, asGenIO, GenIO, create, initialize, sample, samples, normal, bernoulli)
 -- primitive
 import Control.Monad.Primitive (PrimMonad(..), PrimState)
 -- psqueues
@@ -65,15 +69,55 @@ import Numeric.Sampling (sample)
 -- transformers
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Maybe (MaybeT(..), runMaybeT)
--- import Control.Monad.Trans.State.Lazy (StateT, get, put, execStateT)
+import Control.Monad.Trans.Reader (ReaderT(..), runReaderT)
+import Control.Monad.Trans.State.Lazy (StateT(..), get, put, execStateT)
+import Control.Monad.Trans.Writer (WriterT(..), runWriterT, execWriterT)
 -- vector
-import qualified Data.Vector as V (Vector, map, filter, length, toList, replicate, partition, zipWith, head, tail, fromList, thaw, freeze, (!))
+import qualified Data.Vector as V (Vector, map, filter, length, toList, replicate, partition, zipWith, head, tail, fromList, thaw, freeze, (!), foldl)
 import qualified Data.Vector.Generic as VG (Vector(..))
 import Data.Vector.Generic.Mutable (MVector)
 -- vector-algorithms
 import qualified Data.Vector.Algorithms.Merge as V (sort, Comparison)
 
 -- import qualified Data.MaxPQ as MQ (MaxPQ, empty, insert, size, findMax, toList)
+
+
+
+
+
+
+
+
+newtype App w m a = App {
+  unApp :: MaybeT (WriterT w m) a
+                        } deriving (Functor, Applicative, Monad, Alternative, MonadIO, MonadWriter w)
+
+runApp :: App w m a -> m (Maybe a, w)
+runApp a = runWriterT $ runMaybeT (unApp a)
+
+runAppST :: (forall s . P.Gen s -> App w (ST s) a) -> (Maybe a, w)
+runAppST a = withST_ (runApp . a)
+
+-- -- testApp :: PrimMonad m => P.Gen (PrimState m) -> App m [Double] ()
+-- testApp g = App $ do
+--   z <- P.samples 5 (P.normal 0 1) g
+--   tell z
+--   pure z
+
+-- sampleApp :: (Foldable f, PrimMonad m) =>
+--              Int -> f a -> P.Gen (PrimState m) -> App m [String] [a]
+-- sampleApp n ixs g = App $ do
+--   zm <- sample n ixs g
+--   case zm of
+--     Nothing -> do
+--       tell ["derp"]
+--       empty
+--     Just xs -> pure xs
+
+
+-- runAppST :: (forall s . P.Gen s -> WriterT w (ST s) a) -> (a, w)
+-- runAppST a = withST_ (runWriterT . a)
+
 
 
 -- | Vantage point tree
@@ -278,12 +322,6 @@ If the recursive use of the algorithm finds a neighboring point n with distance 
 
 
 
-
-
-
-
-
-
 -- nearest distf x = go PQ.empty 0 (1/0)
 --   where
 --     go acc _ _ Tip = acc
@@ -304,29 +342,55 @@ If the recursive use of the algorithm finds a neighboring point n with distance 
 
 
 
--- | Build a 'VPTree'
--- buildVT :: (PrimMonad m, RealFrac b, Floating d, Ord d, Eq a) =>
---            (a -> a -> d) -- ^ Distance function
---         -> b -- ^ Proportion of remaining dataset to sample at each level
---         -> V.Vector a -- ^ Dataset
---         -> P.Gen (PrimState m)
---         -> m (VT d a)
+
+
+
+
+
+-- * Construction
+
+
+-- -- | Build a 'VPTree'
+-- -- buildVT :: (PrimMonad m, RealFrac b, Floating d, Ord d, Eq a) =>
+-- --            (a -> a -> d) -- ^ Distance function
+-- --         -> b -- ^ Proportion of remaining dataset to sample at each level
+-- --         -> V.Vector a -- ^ Dataset
+-- --         -> P.Gen (PrimState m)
+-- --         -> m (VT d a)
+-- buildVT distf prop xss gen = go xss
+--   where
+--     go xs = do
+--       mm <- selectVP distf prop xs gen
+--       case mm of
+--         Nothing -> pure Nil
+--         Just (mu, vp) -> do
+--           let
+--             xs' = V.filter (/= vp) xs
+--             (ll, rr) = V.partition (\x -> distf x vp < mu) xs'
+--             branch l | length l == 1 = pure $ Tip (V.head l)
+--                      | null l = pure Nil
+--                      | otherwise = go l
+--           ltree <- branch ll
+--           rtree <- branch rr
+--           pure $ Bin mu vp ltree rtree
+
+
+buildVT :: (PrimMonad m, RealFrac b, Floating d, Eq a, Ord d) =>
+           (a -> a -> d)
+        -> b -> V.Vector a -> P.Gen (PrimState m) -> m (VT d a)
 buildVT distf prop xss gen = go xss
   where
     go xs = do
-      mm <- selectVP distf prop xs gen
-      case mm of
-        Nothing -> pure Nil
-        Just (mu, vp) -> do
-          let
-            xs' = V.filter (/= vp) xs
-            (ll, rr) = V.partition (\x -> distf x vp < mu) xs'
-            branch l | length l == 1 = pure $ Tip (V.head l)
-                     | null l = pure Nil
-                     | otherwise = go l
-          ltree <- branch ll
-          rtree <- branch rr
-          pure $ Bin mu vp ltree rtree
+      (mu, vp) <- selectVP distf prop xs gen
+      let
+        xs' = V.filter (/= vp) xs
+        (ll, rr) = V.partition (\x -> distf x vp < mu) xs'
+        branch l | length l == 1 = pure $ Tip (V.head l)
+                 | null l = pure Nil
+                 | otherwise = go l
+      ltree <- branch ll
+      rtree <- branch rr
+      pure $ Bin mu vp ltree rtree
 
 
 -- | Select a vantage point
@@ -335,93 +399,88 @@ selectVP :: (PrimMonad m, RealFrac b, Ord d, Floating d) =>
          -> b -- ^ proportion of dataset to sample
          -> V.Vector a -- ^ dataset
          -> P.Gen (PrimState m)
-         -> m (Maybe (d, a))
-selectVP distf prop sset gen = runMaybeT $ do
-  (ps, psc) <- randomSplit n sset gen
-  (pstartv, ptail) <- randomSplit 1 ps gen -- Pick a random starting point from ps
-  let pstart = V.head pstartv
+         -> m (d, a)
+selectVP distf prop sset gen = do
+
+  (pstart, pstail, psc) <- vpRandSplit n sset gen
+
+  let pscl = V.toList psc
+
       pickMu (spread_curr, p_curr) p = do
-        ds <- sampleV n2 psc gen -- sample n2 < n points from psc
-        (mu, dists) <- liftMaybeT $ medianDist distf p ds
-        let spread = variance dists (V.replicate n2 mu)
+        ds <- sampleId n2 pscl gen -- sample n2 < n points from psc
+        let
+          dsv = V.fromList ds
+          spread = varianceWrt distf p dsv
+          
         if spread > spread_curr
           then pure (spread, p)
           else pure (spread_curr, p_curr)
-  foldlM pickMu (0, pstart) ptail
+
+  foldlM pickMu (0, pstart) pstail
+
   where
     n = floor (prop * fromIntegral ndata)
     n2 = floor (prop * fromIntegral n)
     ndata = length sset -- size of dataset at current level
 
-selectVP' distf prop sset gen = runMaybeT $ do
+vpRandSplit :: PrimMonad m =>
+               Int
+            -> V.Vector a
+            -> P.Gen (PrimState m)
+            -> m (a, V.Vector a, V.Vector a) -- (head of C, tail of C, complement of C)
+vpRandSplit n sset gen = do
   (ps, psc) <- randomSplit n sset gen
-  (pstartv, ptail) <- randomSplit 1 ps gen -- Pick a random starting point from ps
+  (pstartv, pstail) <- randomSplit 1 ps gen -- Pick a random starting point from ps
   let pstart = V.head pstartv
-      pickMu (spread_curr, p_curr) p = do
-        logVar "p_curr" p_curr
-        ds <- sampleV n2 psc gen -- sample n2 < n points from psc
-        (mu, dists) <- liftMaybeT $ medianDist distf p ds
-        let spread = variance dists (V.replicate n2 mu)
-        if spread > spread_curr
-          then pure (spread, p)
-          else pure (spread_curr, p_curr)
-  foldlM pickMu (0, pstart) ptail
-  where
-    n = floor (prop * fromIntegral ndata)
-    n2 = floor (prop * fromIntegral n)
-    ndata = length sset -- size of dataset at current level
-
-
-liftMaybeT :: Applicative m => Maybe a -> MaybeT m a
-liftMaybeT = MaybeT . pure
-
+  pure (pstart, pstail, psc)
 
 -- | Sample a random split of the dataset
 --
 -- Invariant : the concatenation of the two resulting vectors is a permutation of the input vector
 --
--- NB : Will return Nothing if the required sample size is too large
-randomSplit :: (PrimMonad m) =>
-               Int -- ^ Sample size
-            -> V.Vector a -- ^ Dataset
-            -> P.Gen (PrimState m)
-            -> MaybeT m (V.Vector a, V.Vector a) -- ^ (sample, complementary sample)
-randomSplit n vv gen = MaybeT $ fmap split <$> sampl
+-- NB : the second vector in the result tuple will be empty if the requested sample size is larger than the input vector
+randomSplit :: (PrimMonad f) =>
+               Int
+            -> V.Vector a
+            -> P.Gen (PrimState f) -> f (V.Vector a, V.Vector a)
+randomSplit n vv gen = split <$> sampleId n ixs gen
   where
-    sampl = sample n ixs gen
     split xs = (vxs, vxsc)
       where
         ixss = S.fromList xs
-        ixsc = ixs `S.difference` ixss
+        ixsc = S.fromList ixs `S.difference` ixss
         vxs  = pickItems ixss
         vxsc = pickItems ixsc
     m = V.length vv
-    ixs = S.fromList [0 .. m - 1]
+    ixs = [0 .. m - 1]
     pickItems = V.fromList . foldl (\acc i -> vv V.! i : acc) []
 
 
--- | Sample _without_ replacement. Returns empty list if required sample size is too large
-sampleV :: (PrimMonad m, Foldable f) =>
-           Int -- ^ Size of sample
-        -> f a
-        -> P.Gen (PrimState m) -> MaybeT m (V.Vector a)
-sampleV n xs g = MaybeT $ fmap V.fromList <$> sample n xs g
-{-# INLINE sampleV #-}
 
-medianDist :: (Ord d) => (t -> p -> d) -> p -> V.Vector t -> Maybe (d, V.Vector d)
-medianDist distf p ds =
-  case mmu of
-    Nothing -> Nothing
-    Just mu -> Just (mu, dists)
-  where
-    mmu = median dists
-    dists = V.map (`distf` p) ds
-{-# INLINE medianDist #-}
+-- | Sample _without_ replacement. Returns the input list if the required sample size is too large
+sampleId :: (PrimMonad m) =>
+            Int -- ^ Size of sample
+         -> [a]
+         -> P.Gen (PrimState m)
+         -> m [a]
+sampleId n xs g = fromMaybe xs <$> sample n xs g
+{-# INLINE sampleId #-}
 
-median :: Ord a => V.Vector a -> Maybe a
+-- | NB input vector must have at least 1 element
+varianceWrt :: (Floating a, Ord a) =>
+               (t -> p -> a) -> p -> V.Vector t -> a
+varianceWrt distf p ds = variance dists (V.replicate n2 mu) where
+  dists = V.map (`distf` p) ds
+  mu = median dists
+  n2 = V.length ds
+{-# INLINE varianceWrt #-}
+
+-- | NB input vector must have at least 1 element
+median :: Ord a => V.Vector a -> a
 median xs
-  | n <= 1 = Nothing
-  | otherwise = Just $sortV xs V.! floor (fromIntegral n / 2)
+  | null xs = error "median : input array must have at least 1 element"
+  | n == 1 = V.head xs
+  | otherwise = sortV xs V.! floor (fromIntegral n / 2)
   where n = length xs
 {-# INLINE median #-}
 
@@ -517,8 +576,10 @@ distp (P x1 y1) (P x2 y2) = sqrt $ (x1 - x2)**2 + (y1 - y2)**2
 
 
 
-genN2 :: Int -> V.Vector P
+genN1, genN2 :: Int -> V.Vector P
 genN2 n = V.fromList $ withST_ (P.samples n (binMix 0 20 1 1))
+
+genN1 n = V.fromList $ withST_ (P.samples n (isoNormal2d 0 1))
 
 -- | binary mixture of isotropic 2d normal distribs
 binMix :: PrimMonad m =>
@@ -537,8 +598,8 @@ isoNormal2d mu sig = P <$> P.normal mu sig <*> P.normal mu sig
 
 
 
--- tt :: RealFrac p => Int -> p -> VT Double P
+-- -- tt :: RealFrac p => Int -> p -> VT Double P
 tt n = vptree (genN2 n)
 
--- vptree :: RealFrac p => V.Vector P -> p -> VT Double P
+-- -- vptree :: RealFrac p => V.Vector P -> p -> VT Double P
 vptree ps p = withST_ $ buildVT distp p ps

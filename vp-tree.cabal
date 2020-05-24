@@ -26,6 +26,7 @@ library
                      , deepseq
                      , depq >= 0.3
                      , exceptions
+                     , mtl
                      , mwc-probability
                      , primitive
                      , psqueues
