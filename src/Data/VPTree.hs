@@ -381,9 +381,10 @@ buildVT :: (PrimMonad m, RealFrac b, Floating d, Eq a, Ord d) =>
 buildVT distf prop xss gen = go xss
   where
     go xs = do
-      (mu, vp) <- selectVP distf prop xs gen
+      vp <- selectVP distf prop xs gen
       let
         xs' = V.filter (/= vp) xs
+        mu = median $ V.map (`distf` vp) xs'
         (ll, rr) = V.partition (\x -> distf x vp < mu) xs'
         branch l | length l == 1 = pure $ Tip (V.head l)
                  | null l = pure Nil
@@ -399,7 +400,7 @@ selectVP :: (PrimMonad m, RealFrac b, Ord d, Floating d) =>
          -> b -- ^ proportion of dataset to sample
          -> V.Vector a -- ^ dataset
          -> P.Gen (PrimState m)
-         -> m (d, a)
+         -> m a
 selectVP distf prop sset gen = do
 
   (pstart, pstail, psc) <- vpRandSplit n sset gen
@@ -411,12 +412,12 @@ selectVP distf prop sset gen = do
         let
           dsv = V.fromList ds
           spread = varianceWrt distf p dsv
-          
+
         if spread > spread_curr
           then pure (spread, p)
           else pure (spread_curr, p_curr)
 
-  foldlM pickMu (0, pstart) pstail
+  snd <$> foldlM pickMu (0, pstart) pstail
 
   where
     n = floor (prop * fromIntegral ndata)
@@ -485,7 +486,7 @@ median xs
 {-# INLINE median #-}
 
 variance :: (Floating a) => V.Vector a -> V.Vector a -> a
-variance xs mu = mean $ V.zipWith sqdiff xs mu
+variance xs mus = mean $ V.zipWith sqdiff xs mus
   where
     sqdiff x y = (x - y) ** 2
 {-# INLINE variance #-}
