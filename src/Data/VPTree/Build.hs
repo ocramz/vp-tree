@@ -54,47 +54,41 @@ buildVT :: (PrimMonad m, RealFrac b, Floating d, Eq a, Ord d) =>
         -> m (VT d a)
 buildVT distf prop xss gen = go xss
   where
-    branch l | length l == 1 = pure $ Tip (V.head l)
-             | null l = pure Nil
-             | otherwise = go l
-    go xs = do
-      vp <- selectVP distf prop xs gen
-      let
-        xs' = V.filter (/= vp) xs
-        mu = median $ V.map (`distf` vp) xs' -- median distance to the vantage point
-        (ll, rr) = V.partition (\x -> distf x vp < mu) xs'
+    go xs
+      | length xs <= 1 = pure $ Tip xs
+      | otherwise = do
+          (vp, xs') <- selectVP distf prop xs gen
+          let
+            mu = median $ V.map (`distf` vp) xs' -- median distance to the vantage point
+            (ll, rr) = V.partition (\x -> distf x vp < mu) xs'
 
-      ltree <- branch ll
-      rtree <- branch rr
-      pure $ Bin mu vp ltree rtree
+          ltree <- go ll
+          rtree <- go rr
+          pure $ Bin mu vp ltree rtree
 
 
 -- | Select a vantage point
-selectVP :: (PrimMonad m, RealFrac b, Ord d, Floating d) =>
-            (a -> a -> d) -- ^ distance function
-         -> b -- ^ proportion of dataset to sample
-         -> V.Vector a -- ^ dataset
-         -> P.Gen (PrimState m)
-         -> m a
+selectVP :: (PrimMonad m, RealFrac b, Floating d, Ord d) =>
+            (a -> a -> d)
+         -> b -> V.Vector a -> P.Gen (PrimState m) -> m (a, V.Vector a)
 selectVP distf prop sset gen = do
-
   (pstart, pstail, pscl) <- vpRandSplitInit n sset gen
-
-  let pickMu (spread_curr, p_curr) p = do
+  let pickMu (spread_curr, p_curr, acc) p = do
         ds <- sampleId n2 pscl gen -- sample n2 < n points from pscl
         let
           spread = varianceWrt distf p (V.fromList ds)
-
         if spread > spread_curr
-          then pure (spread, p)
-          else pure (spread_curr, p_curr)
-
-  snd <$> foldlM pickMu (0, pstart) pstail
-
+          then pure (spread,      p,      p_curr : acc)
+          else pure (spread_curr, p_curr, p      : acc)
+  (vp, xs) <- tail3 <$> foldlM pickMu (0, pstart, mempty) pstail
+  pure (vp, V.fromList xs)
   where
-    n = floor (prop * fromIntegral ndata)
-    n2 = floor (prop * fromIntegral n)
+    n = max 1 $ floor (prop * fromIntegral ndata)
+    n2 = max 1 $ floor (prop * fromIntegral n)
     ndata = length sset -- size of dataset at current level
+    tail3 (_, x, xs) = (x, xs)
+
+
 
 vpRandSplitInit :: PrimMonad m =>
                    Int
@@ -107,13 +101,16 @@ vpRandSplitInit n sset gen = do
   let pstart = head pstartv
   pure (pstart, pstail, psc)
 
+-- | Split a dataset in two, returning a ~ uniform sample
+--
+-- the Bernoulli parameter depends on the size of the desired sample and that of the dataset
 uniformSplit :: (PrimMonad m, Foldable t) =>
                 Int -> t a -> P.Gen (PrimState m) -> m ([a], [a])
 uniformSplit n vv = randomSplit p n vv
   where
     p = 1 - (fromIntegral n / fromIntegral (length vv))
 
--- | Sample a random split of the dataset
+-- | Sample a random split of the dataset in a single pass, by repeatedly tossing a coin
 --
 -- Invariant : the concatenation of the two resulting vectors is a permutation of the input vector
 --
@@ -189,6 +186,28 @@ sortV v = runST $ do
 
 
 -- -- OLD
+
+
+-- selectVP :: (PrimMonad m, RealFrac b, Ord d, Floating d) =>
+--             (a -> a -> d) -- ^ distance function
+--          -> b -- ^ proportion of dataset to sample
+--          -> V.Vector a -- ^ dataset
+--          -> P.Gen (PrimState m)
+--          -> m a
+-- selectVP distf prop sset gen = do
+--   (pstart, pstail, pscl) <- vpRandSplitInit n sset gen
+--   let pickMu (spread_curr, p_curr) p = do
+--         ds <- sampleId n2 pscl gen -- sample n2 < n points from pscl
+--         let
+--           spread = varianceWrt distf p (V.fromList ds)
+--         if spread > spread_curr
+--           then pure (spread, p)
+--           else pure (spread_curr, p_curr)
+--   snd <$> foldlM pickMu (0, pstart) pstail
+--   where
+--     n = floor (prop * fromIntegral ndata)
+--     n2 = floor (prop * fromIntegral n)
+--     ndata = length sset -- size of dataset at current level
 
 -- randomSplit :: (PrimMonad f) =>
 --                Int -- ^ Size of sample

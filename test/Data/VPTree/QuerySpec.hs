@@ -16,7 +16,7 @@ import Test.Hspec (Spec, describe, it, shouldBe, shouldSatisfy)
 -- import Test.Hspec.QuickCheck
 
 import Data.VPTree.Build (build)
--- import Data.VPTree.Draw (draw)
+import Data.VPTree.Draw (draw)
 import Data.VPTree.Internal (VT, VPTree, withST, withST_, withIO)
 import Data.VPTree.Query (range, distances)
 
@@ -28,7 +28,7 @@ spec = describe "Data.VPTree.Query" $ do
       query = P 0 1
       res = range t3 thr query
     res `shouldSatisfy` all (\(d, _) -> d < thr)
-    
+
 
 
 
@@ -58,6 +58,7 @@ genN2 n = V.fromList $ withST_ (P.samples n (binMix 0 20 1 1))
 genN1 n = V.fromList $ withST_ (P.samples n (isoNormal2d 0 1))
 
 genN3 n = V.fromList $ withST_ $ P.samples n (binDisk 1 1 0 5)
+
 
 -- | binary mixture of isotropic 2d normal distribs
 binMix :: PrimMonad m =>

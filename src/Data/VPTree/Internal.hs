@@ -16,6 +16,7 @@ import qualified System.Random.MWC.Probability as P (Gen, Prob, withSystemRandom
 -- serialise
 import Codec.Serialise (Serialise(..))
 -- vector
+import qualified Data.Vector as V (Vector(..))
 import qualified Data.Vector.Generic as VG (Vector(..))
 
 -- | Vantage point tree
@@ -40,12 +41,12 @@ data VT d a = Bin  {
   , _near :: !(VT d a) -- ^ points at a distance < mu
   , _far :: !(VT d a) -- ^ points farther than mu
   }
-            | Tip a
-            | Nil
+            | Tip (V.Vector a)
+            -- | Nil
             deriving (Eq, Generic, Functor, Foldable, Traversable)
 instance (Show d, Show a) => Show (VT d a) where
   show = \case
-    Nil -> "<Nil>"
+    -- Nil -> "<Nil>"
     Tip x -> unwords ["<Tip", show x, ">"]
     Bin m v ll rr -> unwords ["<Bin", show m, show v, ":", show ll, show rr, ">"]
 instance (Serialise d, Serialise a) => Serialise (VT d a)
@@ -53,7 +54,7 @@ instance (Serialise d, Serialise a) => Serialise (VT d a)
 instance (NFData d, NFData a) => NFData (VT d a) where
   rnf (Bin d x tl tr) = rnf d `seq` rnf x `seq` rnf tl `seq` rnf tr
   rnf (Tip x) = rnf x
-  rnf Nil = ()
+  -- rnf Nil = ()
 
 
 

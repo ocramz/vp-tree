@@ -29,7 +29,7 @@ toBox = \case
   (Bin d x tl tr) ->
     txt (node x d) `stack` (toBox tl `byside` toBox tr)
   Tip x -> txt $ show x
-  Nil   -> txt "*"
+  -- Nil   -> txt "*"
   where
     node x d = printf "%s,%5.2f" (show x) d
     -- nodeBox x d =

@@ -8,7 +8,7 @@ module Data.VPTree.Query (
   ) where
 
 import Control.Monad.IO.Class (MonadIO(..))
-import Data.Foldable (toList, foldrM)
+import Data.Foldable (toList, foldrM, foldlM)
 
 
 -- containers
@@ -20,6 +20,8 @@ import Control.Monad.State (MonadState(..))
 import qualified Data.IntPSQ as PQ (IntPSQ, insert, size, empty, toList, minView)
 -- transformers
 import Control.Monad.Trans.State (State, evalState, runState)
+-- vector
+import qualified Data.Vector as V (Vector(..))
 
 
 import Data.VPTree.Internal (VT(..), VPTree(..))
@@ -39,60 +41,69 @@ distances (VPT tt distf) x = map (distf x) $ toList tt
 -- | Range query : find all points in the tree closer to the query point than a given threshold
 range :: (Num p, Ord p) =>
          VPTree p a
-      -> p -- ^ threshold
+      -> p -- ^ proximity threshold
       -> a -- ^ query point
       -> [(p, a)]
--- range (VPT tt distf) eps x = rangeVT' eps x distf tt
 range (VPT tt distf) eps x = psqList $ rangeVT eps x distf tt
+-- range (VPT tt distf) eps x = rangeVT' eps x distf tt
 
 
 rangeVT :: (Num b, Ord b) =>
-           b -> p -> (p -> c -> b) -> VT b c -> PQ.IntPSQ b c
+           b -- ^ proximity threshold
+        -> a -> (a -> a -> b) -> VT b a -> PQ.IntPSQ b a
 rangeVT eps x distf = flip evalState 0 . go PQ.empty
   where
     go acc = \case
-      Nil -> pure acc
-      Tip t ->
-        let d = distf x t
-        in
-          if d < eps
-          then do
-            i <- get
-            let acc' = PQ.insert i d t acc
-            put (i + 1)
-            pure acc'
-          else pure acc
+      Tip ts ->
+        foldlM insf acc ts
+        where
+          insf acc t
+            | d < eps = do
+                i <- get
+                let acc' = PQ.insert i d t acc
+                put (i + 1)
+                pure acc'
+            | otherwise = pure acc
+            where
+              d = distf x t
+
       Bin mu v ll rr
-        | eps < d - mu -> go acc rr
         | d < eps -> do
             i <- get
             let acc' = PQ.insert i d v acc
             put (i + 1)
             go acc' ll
-        | otherwise -> do
+        | d > mu + eps -> go acc rr
+        | d <= mu + eps && d > mu - eps -> do
             accl <- go acc ll
             accr <- go acc rr
             union accl accr
+        | d <= mu - eps -> go acc ll
+
+        -- | otherwise -> do
+        --     accl <- go acc ll
+        --     accr <- go acc rr
+        --     union accl accr
         where
           d = distf x v
 
-rangeVT' :: (Ord a, Num a) =>
-            a -> p -> (p -> b -> a) -> VT a b -> [(a, b)]
-rangeVT' eps x distf = go mempty
-  where
-    insert v qry acc = if d < eps
-      then (d, v) : acc
-      else acc
-      where d = distf qry v
-    go acc = \case
-      Nil -> acc
-      Tip t -> insert t x acc
-      Bin mu v ll rr
-        | d < eps -> go ((d, v) : acc) ll
-        | eps < d - mu -> go acc rr
-        | otherwise -> go acc ll <> go acc rr
-        where
-          d = distf x v
+-- rangeVT' :: (Ord a, Num a) =>
+--             a -> p -> (p -> b -> a) -> VT a b -> [(a, b)]
+-- rangeVT' eps x distf = go mempty
+--   where
+--     insert v qry acc = if d < eps
+--       then (d, v) : acc
+--       else acc
+--       where d = distf qry v
+--     go acc = \case
+--       Nil -> acc
+--       Tip t -> insert t x acc
+--       Bin mu v ll rr
+--         | d < eps -> go ((d, v) : acc) ll
+--         | eps < d - mu -> go acc rr
+--         | otherwise -> go acc ll <> go acc rr
+--         where
+--           d = distf x v
 
 
 -- rekey starting from the current index

@@ -22,9 +22,11 @@ library
                        Data.VPTree.Build
                        Data.VPTree.Query
                        Data.VPTree.Internal
-  other-modules:       Data.VPTree.Draw
+                       Data.VPTree.Draw
+  -- other-modules:       
   build-depends:       base >= 4.7 && < 5
                      , boxes
+                     -- , conduit
                      , containers
                      , deepseq
                      , depq >= 0.3
