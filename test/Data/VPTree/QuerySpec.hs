@@ -1,6 +1,7 @@
 {-# options_ghc -Wno-unused-imports #-}
 module Data.VPTree.QuerySpec where
 
+import Data.Foldable (toList)
 import Text.Printf (printf)
 
 -- mwc-probability
@@ -11,18 +12,23 @@ import Control.Monad.Primitive (PrimMonad(..), PrimState)
 import qualified Data.Vector as V (Vector, map, filter, length, toList, replicate, partition, zipWith, head, tail, fromList, thaw, freeze, (!), foldl)
 import qualified Data.Vector.Generic as VG (Vector(..))
 
-import Test.Hspec (Spec, describe, it, shouldBe)
+import Test.Hspec (Spec, describe, it, shouldBe, shouldSatisfy)
 -- import Test.Hspec.QuickCheck
 
 import Data.VPTree.Build (build)
-import Data.VPTree.Draw (draw)
+-- import Data.VPTree.Draw (draw)
 import Data.VPTree.Internal (VT, VPTree, withST, withST_, withIO)
-import Data.VPTree.Query (range)
+import Data.VPTree.Query (range, distances)
 
 spec :: Spec
 spec = describe "Data.VPTree.Query" $ do
-  it "works" $ do
-    1 `shouldBe` 1
+  it "range : range query result set is within the threshold distance" $ do
+    let
+      thr = 1.0
+      query = P 0 1
+      res = range t3 thr query
+    res `shouldSatisfy` all (\(d, _) -> d < thr)
+    
 
 
 

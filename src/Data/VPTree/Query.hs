@@ -1,10 +1,14 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# options_ghc -Wno-unused-imports #-}
-module Data.VPTree.Query (range) where
+module Data.VPTree.Query (
+  range
+  -- * Utilities
+  , distances
+  ) where
 
 import Control.Monad.IO.Class (MonadIO(..))
-import Data.Foldable (foldrM)
+import Data.Foldable (toList, foldrM)
 
 
 -- containers
@@ -26,14 +30,20 @@ psqList q = case PQ.minView q of
   Nothing -> mempty
   Just (_, p, v, qrest) -> (p, v) : psqList qrest
 
+-- | All distances to a query point
+distances :: VPTree b a
+             -> a -- ^ query
+             -> [b]
+distances (VPT tt distf) x = map (distf x) $ toList tt
+
 -- | Range query : find all points in the tree closer to the query point than a given threshold
 range :: (Num p, Ord p) =>
          VPTree p a
       -> p -- ^ threshold
-      -> a
+      -> a -- ^ query point
       -> [(p, a)]
-range (VPT tt distf) eps x = rangeVT' eps x distf tt
--- range (VPT tt distf) eps x = psqList $ rangeVT eps x distf tt
+-- range (VPT tt distf) eps x = rangeVT' eps x distf tt
+range (VPT tt distf) eps x = psqList $ rangeVT eps x distf tt
 
 
 rangeVT :: (Num b, Ord b) =>
@@ -76,11 +86,7 @@ rangeVT' eps x distf = go mempty
       where d = distf qry v
     go acc = \case
       Nil -> acc
-      Tip t -> if d < eps
-        then (d, t) : acc
-        else acc
-        where
-          d = distf x t
+      Tip t -> insert t x acc
       Bin mu v ll rr
         | d < eps -> go ((d, v) : acc) ll
         | eps < d - mu -> go acc rr
