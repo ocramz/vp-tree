@@ -79,11 +79,6 @@ rangeVT eps x distf = flip evalState 0 . go PQ.empty
             accr <- go acc rr
             union accl accr
         | otherwise -> go acc ll
-
-        -- | otherwise -> do
-        --     accl <- go acc ll
-        --     accr <- go acc rr
-        --     union accl accr
         where
           d = distf x v
 

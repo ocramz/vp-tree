@@ -55,7 +55,7 @@ buildVT :: (PrimMonad m, RealFrac b, Floating d, Eq a, Ord d) =>
 buildVT distf prop xss gen = go xss
   where
     go xs
-      | length xs <= 1 = pure $ Tip xs
+      | length xs <= 6 = pure $ Tip xs
       | otherwise = do
           (vp, xs') <- selectVP distf prop xs gen
           let

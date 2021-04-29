@@ -26,7 +26,7 @@ spec = describe "Data.VPTree.Query" $ do
     let
       thr = 1.0
       query = P 0 1
-      n = 200
+      n = 20000
       dat = buildP $ genN3 n
       res = range dat thr query
     res `shouldSatisfy` all (\(d, _) -> d < thr)

@@ -42,7 +42,6 @@ data VT d a = Bin  {
   , _far :: !(VT d a) -- ^ points farther than mu
   }
             | Tip (V.Vector a)
-            -- | Nil
             deriving (Eq, Generic, Functor, Foldable, Traversable)
 instance (Show d, Show a) => Show (VT d a) where
   show = \case
