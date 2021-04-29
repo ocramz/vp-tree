@@ -21,7 +21,7 @@ import qualified Data.IntPSQ as PQ (IntPSQ, insert, size, empty, toList, minView
 -- transformers
 import Control.Monad.Trans.State (State, evalState, runState)
 -- vector
-import qualified Data.Vector as V (Vector(..))
+import qualified Data.Vector as V (Vector)
 
 
 import Data.VPTree.Internal (VT(..), VPTree(..))
@@ -78,7 +78,7 @@ rangeVT eps x distf = flip evalState 0 . go PQ.empty
             accl <- go acc ll
             accr <- go acc rr
             union accl accr
-        | d <= mu - eps -> go acc ll
+        | otherwise -> go acc ll
 
         -- | otherwise -> do
         --     accl <- go acc ll
@@ -86,6 +86,26 @@ rangeVT eps x distf = flip evalState 0 . go PQ.empty
         --     union accl accr
         where
           d = distf x v
+
+
+
+
+-- rekey starting from the current index
+union :: (MonadState Int m, Ord b) =>
+         PQ.IntPSQ b c -> PQ.IntPSQ b c -> m (PQ.IntPSQ b c)
+union q1 q2 = do
+  i0 <- get
+  pure $ flip evalState i0 $ foldrM f PQ.empty $ l1 <> l2
+  where
+    f (_, p, v) acc = do
+      i <- get
+      let acc' = PQ.insert i p v acc
+      put $ succ i
+      pure acc'
+    l1 = PQ.toList q1
+    l2 = PQ.toList q2
+
+
 
 -- rangeVT' :: (Ord a, Num a) =>
 --             a -> p -> (p -> b -> a) -> VT a b -> [(a, b)]
@@ -106,20 +126,6 @@ rangeVT eps x distf = flip evalState 0 . go PQ.empty
 --           d = distf x v
 
 
--- rekey starting from the current index
-union :: (MonadState Int m, Ord b) =>
-         PQ.IntPSQ b c -> PQ.IntPSQ b c -> m (PQ.IntPSQ b c)
-union q1 q2 = do
-  i0 <- get
-  pure $ flip evalState i0 $ foldrM f PQ.empty $ l1 <> l2
-  where
-    f (_, p, v) acc = do
-      i <- get
-      let acc' = PQ.insert i p v acc
-      put $ succ i
-      pure acc'
-    l1 = PQ.toList q1
-    l2 = PQ.toList q2
 
 
 -- nearest :: (Num d, Ord d) =>
@@ -251,8 +257,8 @@ subtrees are then pruned when the metric information stored in the tree suffices
 --         acc'  = PQ.insert i d v acc
 --         maxd' = max maxd d -- next search radius
 
-logVar :: (MonadIO io, Show a) => String -> a -> io ()
-logVar w x = liftIO $ putStrLn $ unwords [w, "=", show x]
+-- logVar :: (MonadIO io, Show a) => String -> a -> io ()
+-- logVar w x = liftIO $ putStrLn $ unwords [w, "=", show x]
 
 {-
 At any given step we are working with a node of the tree that has a

@@ -26,7 +26,9 @@ spec = describe "Data.VPTree.Query" $ do
     let
       thr = 1.0
       query = P 0 1
-      res = range t3 thr query
+      n = 200
+      dat = buildP $ genN3 n
+      res = range dat thr query
     res `shouldSatisfy` all (\(d, _) -> d < thr)
 
 
@@ -48,12 +50,13 @@ distp (P x1 y1) (P x2 y2) = sqrt $ (x1 - x2)**2 + (y1 - y2)**2
 
 
 
-t2, t3 :: VPTree Double P
+t2, t2', t3 :: VPTree Double P
 t3 = buildP $ genN3 12
 t2 = buildP $ genN2 12
+t2' = buildP $ genN2 10000
 
 genN1, genN2, genN3 :: Int -> V.Vector P
-genN2 n = V.fromList $ withST_ (P.samples n (binMix 0 20 1 1))
+genN2 n = V.fromList $ withST_ (P.samples n (binMix 0 25 1 1))
 
 genN1 n = V.fromList $ withST_ (P.samples n (isoNormal2d 0 1))
 
