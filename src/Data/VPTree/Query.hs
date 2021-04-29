@@ -70,6 +70,10 @@ rangeVT' :: (Ord a, Num a) =>
             a -> p -> (p -> b -> a) -> VT a b -> [(a, b)]
 rangeVT' eps x distf = go mempty
   where
+    insert v qry acc = if d < eps
+      then (d, v) : acc
+      else acc
+      where d = distf qry v
     go acc = \case
       Nil -> acc
       Tip t -> if d < eps
@@ -78,8 +82,8 @@ rangeVT' eps x distf = go mempty
         where
           d = distf x t
       Bin mu v ll rr
-        | eps < d - mu -> go acc rr
         | d < eps -> go ((d, v) : acc) ll
+        | eps < d - mu -> go acc rr
         | otherwise -> go acc ll <> go acc rr
         where
           d = distf x v

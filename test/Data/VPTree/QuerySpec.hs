@@ -15,7 +15,7 @@ import Test.Hspec (Spec, describe, it, shouldBe)
 -- import Test.Hspec.QuickCheck
 
 import Data.VPTree.Build (build)
--- import Data.VPTree.Draw (draw)
+import Data.VPTree.Draw (draw)
 import Data.VPTree.Internal (VT, VPTree, withST, withST_, withIO)
 import Data.VPTree.Query (range)
 
