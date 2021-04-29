@@ -1,6 +1,9 @@
 {-# options_ghc -Wno-unused-imports #-}
 {-# options_ghc -Wno-type-defaults #-}
-module Data.VPTree.Build (buildVT) where
+module Data.VPTree.Build (build
+                         -- * Internal
+                         , buildVT
+                         ) where
 
 import Control.Monad.ST (ST, runST)
 import qualified Data.Foldable as F (Foldable(..))
@@ -25,54 +28,42 @@ import qualified Data.Vector as V (Vector, map, filter, length, toList, replicat
 -- vector-algorithms
 import qualified Data.Vector.Algorithms.Merge as V (sort, Comparison)
 
-import Data.VPTree.Internal (VT(..), VPTree(..))
+import Data.VPTree.Internal (VT(..), VPTree(..), withST_)
 
 -- * Construction
 
-
--- -- | Build a 'VPTree'
--- -- buildVT :: (PrimMonad m, RealFrac b, Floating d, Ord d, Eq a) =>
--- --            (a -> a -> d) -- ^ Distance function
--- --         -> b -- ^ Proportion of remaining dataset to sample at each level
--- --         -> V.Vector a -- ^ Dataset
--- --         -> P.Gen (PrimState m)
--- --         -> m (VT d a)
--- buildVT distf prop xss gen = go xss
---   where
---     go xs = do
---       mm <- selectVP distf prop xs gen
---       case mm of
---         Nothing -> pure Nil
---         Just (mu, vp) -> do
---           let
---             xs' = V.filter (/= vp) xs
---             (ll, rr) = V.partition (\x -> distf x vp < mu) xs'
---             branch l | length l == 1 = pure $ Tip (V.head l)
---                      | null l = pure Nil
---                      | otherwise = go l
---           ltree <- branch ll
---           rtree <- branch rr
---           pure $ Bin mu vp ltree rtree
+-- | Build a 'VPTree'
+--
+-- Implementation detail : construction of a VP-tree requires a randomized algorithm, but we run that in the ST monad so the result is pure
+build :: (RealFrac p, Floating d, Ord d, Eq a) =>
+         (a -> a -> d) -- ^ distance function
+      -> p -- ^ proportion of remaining dataset to sample at each level
+      -> V.Vector a -- ^ dataset
+      -> VPTree d a
+build distf prop xss = withST_ $ \gen -> do
+  vt <- buildVT distf prop xss gen
+  pure $ VPT vt distf
 
 
 -- | Build a VP-tree with the given distance function
 buildVT :: (PrimMonad m, RealFrac b, Floating d, Eq a, Ord d) =>
            (a -> a -> d) -- ^ distance function
-        -> b -- ^ proportion of dataset to sample
+        -> b -- ^ proportion of remaining dataset to sample at each level
         -> V.Vector a -- ^ dataset
         -> P.Gen (PrimState m) -- ^ PRNG
         -> m (VT d a)
 buildVT distf prop xss gen = go xss
   where
+    branch l | length l == 1 = pure $ Tip (V.head l)
+             | null l = pure Nil
+             | otherwise = go l
     go xs = do
       vp <- selectVP distf prop xs gen
       let
         xs' = V.filter (/= vp) xs
         mu = median $ V.map (`distf` vp) xs' -- median distance to the vantage point
         (ll, rr) = V.partition (\x -> distf x vp < mu) xs'
-        branch l | length l == 1 = pure $ Tip (V.head l)
-                 | null l = pure Nil
-                 | otherwise = go l
+        
       ltree <- branch ll
       rtree <- branch rr
       pure $ Bin mu vp ltree rtree

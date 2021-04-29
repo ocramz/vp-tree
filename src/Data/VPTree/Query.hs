@@ -1,6 +1,78 @@
-module Data.VPTree.Query where
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
+{-# options_ghc -Wno-unused-imports #-}
+module Data.VPTree.Query (range) where
 
 import Control.Monad.IO.Class (MonadIO(..))
+import Data.Foldable (foldrM)
+
+-- mtl
+import Control.Monad.State (MonadState(..))
+-- psqueues
+import qualified Data.IntPSQ as PQ (IntPSQ, insert, size, empty, toList)
+-- transformers
+import Control.Monad.Trans.State (State, evalState, runState)
+
+
+import Data.VPTree.Internal (VT(..), VPTree(..))
+
+
+-- | Range query : find all points in the tree closer to the query point than a given threshold
+range :: (Num p, Ord p) =>
+         VPTree p a
+      -> p -- ^ threshold
+      -> a
+      -> PQ.IntPSQ p a
+range (VPT tt distf) eps x = rangeVT eps x distf tt
+
+
+rangeVT :: (Num b, Ord b) =>
+           b -> p -> (p -> c -> b) -> VT b c -> PQ.IntPSQ b c
+rangeVT eps x distf = flip evalState 0 . go PQ.empty
+  where
+    go acc = \case
+      Nil -> pure acc
+      Tip t ->
+        let d = distf x t
+        in
+          if d < eps
+          then do
+            i <- get
+            let acc' = PQ.insert i d t acc
+            put (i + 1)
+            pure acc'
+          else pure acc
+      Bin mu v ll rr
+        | eps < d - mu -> go acc rr
+        | d < eps -> do
+            i <- get
+            let acc' = PQ.insert i d v acc
+            put (i + 1)
+            go acc' ll
+        | otherwise -> do
+            accl <- go acc ll
+            accr <- go acc rr
+            union accl accr
+        where
+          d = distf x v
+
+
+
+-- rekey starting from the current index
+union :: (MonadState Int m, Ord b) =>
+         PQ.IntPSQ b c -> PQ.IntPSQ b c -> m (PQ.IntPSQ b c)
+union q1 q2 = do
+  i0 <- get
+  pure $ flip evalState i0 $ foldrM f PQ.empty $ l1 <> l2
+  where
+    f (_, p, v) acc = do
+      i <- get
+      let acc' = PQ.insert i p v acc
+      put $ succ i
+      pure acc'
+    l1 = PQ.toList q1
+    l2 = PQ.toList q2
+
 
 -- nearest :: (Num d, Ord d) =>
 --            VPTree d a
@@ -8,20 +80,6 @@ import Control.Monad.IO.Class (MonadIO(..))
 --         -> a
 --         -> PQ.IntPSQ d a
 -- nearest (VPT t df) k x = nearestVT df k t x
-
--- -- -- build :: (PrimMonad m, RealFrac b, Floating d, Ord d) =>
--- -- --          (a -> a -> d)
--- -- --       -> b
--- -- --       -> V.Vector a
--- -- --       -> P.Gen (PrimState m)
--- -- --       -> m (VPTree d a)
--- build df prop xs gen = do
---   mt <- buildVT df prop xs gen
---   pure $ (`VPT` df) <$> mt
-
-
-
-
 
 
 {-
@@ -165,7 +223,7 @@ If the recursive use of the algorithm finds a neighboring point n with distance 
 --   where
 --     (z, _, _) = go PQ.empty 0 maxd0 tr
 --     maxd0 = 0
---     go acc i maxd Tip = (acc, i, maxd)
+--     go acc i maxd Nil = (acc, i, maxd)
 --     go acc i maxd (Bin mu v ll rr)
 --       | q1 || q2 = go acc' (succ i)  maxd' ll -- x closer to v than to shell
 --       | d < mu =   -- x inside shell but not closer to v

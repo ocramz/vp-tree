@@ -8,7 +8,7 @@
 
 {-# options_ghc -Wno-type-defaults #-}
 {-# options_ghc -Wno-unused-top-binds #-}
--- {-# options_ghc -Wno-unused-imports #-}
+{-# options_ghc -Wno-unused-imports #-}
 {-# options_ghc  -Wno-name-shadowing #-}
 {- | Vantage point trees
 
@@ -19,17 +19,13 @@ http://web.cs.iastate.edu/~honavar/nndatastructures.pdf
 module Data.VPTree
   (VPTree
   -- * Construction
-  -- , build
-  -- * Nearest-neighbor query
+  , build
+  -- * Query
+  , range
   -- , nearest
   -- * Utilities
   -- ** Rendering trees
   , draw
-  -- ** Random number generation
-  -- *** IO
-  , withIO
-  -- *** ST
-  , withST, withST_
   )
   where
 
@@ -41,6 +37,8 @@ import Data.Word (Word32)
 import Control.Monad.ST (ST, runST)
 import Text.Printf (PrintfArg, printf)
 
+-- deepseq
+import Control.DeepSeq (NFData(..))
 -- mtl
 import Control.Monad.Writer (MonadWriter(..))
 -- mwc-probability
@@ -56,9 +54,9 @@ import qualified Data.Vector.Generic as VG (Vector(..))
 
 -- import qualified Data.MaxPQ as MQ (MaxPQ, empty, insert, size, findMax, toList)
 
-import Data.VPTree.Internal (VT, VPTree)
-import Data.VPTree.Build (buildVT)
-import Data.VPTree.Query ()
+import Data.VPTree.Internal (VT, VPTree, withST, withST_, withIO)
+import Data.VPTree.Build (build, buildVT)
+import Data.VPTree.Query (range)
 import Data.VPTree.Draw (draw)
 
 
@@ -92,42 +90,6 @@ runAppST a = withST_ (runApp . a)
 
 -- runAppST :: (forall s . P.Gen s -> WriterT w (ST s) a) -> (a, w)
 -- runAppST a = withST_ (runWriterT . a)
-
-
-
-
--- | Runs a PRNG action in IO
---
--- NB : uses 'withSystemRandom' internally
-withIO :: (P.GenIO -> IO a) -- ^ Memory bracket for the PRNG
-       -> IO a
-withIO = P.withSystemRandom . P.asGenIO
-
--- | Runs a PRNG action in the 'ST' monad, using a fixed seed
---
--- NB : uses 'P.create' internally
-withST_ :: (forall s . P.Gen s -> ST s a) -- ^ Memory bracket for the PRNG
-        -> a
-withST_ st = runST $ do
-  g <- P.create
-  st g
-
--- | Runs a PRNG action in the 'ST' monad, using a given random seed
---
--- NB : uses 'P.initialize' internally
-withST :: (VG.Vector v Word32) =>
-          v Word32 -- ^ Random seed
-       -> (forall s . P.Gen s -> ST s a) -- ^ Memory bracket for the PRNG
-       -> a
-withST seed st = runST $ do
-  g <- P.initialize seed
-  st g
-
-
-
-
-
-
 
 
 
