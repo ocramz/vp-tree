@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 {-# language DeriveGeneric #-}
+{-# language LambdaCase #-}
 {-# language DeriveFoldable, DeriveTraversable, DeriveFunctor #-}
 module Data.VPTree.Internal where
 
@@ -28,6 +29,9 @@ instance (Eq d, Eq a) => Eq (VPTree d a) where
 instance (Show d, Show a) => Show (VPTree d a) where
   show (VPT t _) = show t
 instance (NFData d, NFData a) => NFData (VPTree d a) where
+instance Foldable (VPTree d) where
+  foldMap f (VPT t _) = foldMap f t
+
 
 -- | Vantage point tree (internal representation)
 data VT d a = Bin  {
@@ -38,7 +42,12 @@ data VT d a = Bin  {
   }
             | Tip a
             | Nil
-            deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
+            deriving (Eq, Generic, Functor, Foldable, Traversable)
+instance (Show d, Show a) => Show (VT d a) where
+  show = \case
+    Nil -> "<Nil>"
+    Tip x -> unwords ["<Tip", show x, ">"]
+    Bin m v ll rr -> unwords ["<Bin", show m, show v, ":", show ll, show rr, ">"]
 instance (Serialise d, Serialise a) => Serialise (VT d a)
 
 instance (NFData d, NFData a) => NFData (VT d a) where
@@ -74,3 +83,36 @@ withST :: (VG.Vector v Word32) =>
 withST seed st = runST $ do
   g <- P.initialize seed
   st g
+
+
+--
+
+-- newtype App w m a = App {
+--   unApp :: MaybeT (WriterT w m) a
+--                         } deriving (Functor, Applicative, Monad, Alternative, MonadIO, MonadWriter w)
+
+-- runApp :: App w m a -> m (Maybe a, w)
+-- runApp a = runWriterT $ runMaybeT (unApp a)
+
+-- runAppST :: (forall s . P.Gen s -> App w (ST s) a) -> (Maybe a, w)
+-- runAppST a = withST_ (runApp . a)
+
+-- -- testApp :: PrimMonad m => P.Gen (PrimState m) -> App m [Double] ()
+-- testApp g = App $ do
+--   z <- P.samples 5 (P.normal 0 1) g
+--   tell z
+--   pure z
+
+-- sampleApp :: (Foldable f, PrimMonad m) =>
+--              Int -> f a -> P.Gen (PrimState m) -> App m [String] [a]
+-- sampleApp n ixs g = App $ do
+--   zm <- sample n ixs g
+--   case zm of
+--     Nothing -> do
+--       tell ["derp"]
+--       empty
+--     Just xs -> pure xs
+
+
+-- runAppST :: (forall s . P.Gen s -> WriterT w (ST s) a) -> (a, w)
+-- runAppST a = withST_ (runWriterT . a)

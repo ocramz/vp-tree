@@ -6,24 +6,34 @@ module Data.VPTree.Query (range) where
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Foldable (foldrM)
 
+
+-- containers
+import Data.Sequence as SQ (Seq)
+import Data.Sequence ((|>))
 -- mtl
 import Control.Monad.State (MonadState(..))
 -- psqueues
-import qualified Data.IntPSQ as PQ (IntPSQ, insert, size, empty, toList)
+import qualified Data.IntPSQ as PQ (IntPSQ, insert, size, empty, toList, minView)
 -- transformers
 import Control.Monad.Trans.State (State, evalState, runState)
 
 
 import Data.VPTree.Internal (VT(..), VPTree(..))
 
+psqList :: (Ord p) =>
+           PQ.IntPSQ p b -> [(p, b)]
+psqList q = case PQ.minView q of
+  Nothing -> mempty
+  Just (_, p, v, qrest) -> (p, v) : psqList qrest
 
 -- | Range query : find all points in the tree closer to the query point than a given threshold
 range :: (Num p, Ord p) =>
          VPTree p a
       -> p -- ^ threshold
       -> a
-      -> PQ.IntPSQ p a
-range (VPT tt distf) eps x = rangeVT eps x distf tt
+      -> [(p, a)]
+range (VPT tt distf) eps x = rangeVT' eps x distf tt
+-- range (VPT tt distf) eps x = psqList $ rangeVT eps x distf tt
 
 
 rangeVT :: (Num b, Ord b) =>
@@ -56,6 +66,23 @@ rangeVT eps x distf = flip evalState 0 . go PQ.empty
         where
           d = distf x v
 
+rangeVT' :: (Ord a, Num a) =>
+            a -> p -> (p -> b -> a) -> VT a b -> [(a, b)]
+rangeVT' eps x distf = go mempty
+  where
+    go acc = \case
+      Nil -> acc
+      Tip t -> if d < eps
+        then (d, t) : acc
+        else acc
+        where
+          d = distf x t
+      Bin mu v ll rr
+        | eps < d - mu -> go acc rr
+        | d < eps -> go ((d, v) : acc) ll
+        | otherwise -> go acc ll <> go acc rr
+        where
+          d = distf x v
 
 
 -- rekey starting from the current index

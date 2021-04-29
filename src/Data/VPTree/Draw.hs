@@ -1,6 +1,10 @@
 {-# LANGUAGE LambdaCase #-}
 {-# options_ghc -Wno-unused-imports #-}
-module Data.VPTree.Draw (draw, drawVT) where
+module Data.VPTree.Draw (
+  draw, drawVT
+  -- * helpers
+  , toStringVT
+  ) where
 
 import Text.Printf (PrintfArg, printf)
 import Data.VPTree.Internal (VPTree(..), VT(..))
@@ -15,7 +19,10 @@ draw :: (Show a, PrintfArg d) => VPTree d a -> IO ()
 draw = drawVT . vpTree
 
 drawVT :: (Show a, PrintfArg d) => VT d a -> IO ()
-drawVT = putStrLn . B.render . toBox
+drawVT = putStrLn . toStringVT
+
+toStringVT :: (Show a, PrintfArg d) => VT d a -> String
+toStringVT = B.render . toBox
 
 toBox :: (Show a, PrintfArg d) => VT d a -> B.Box
 toBox = \case

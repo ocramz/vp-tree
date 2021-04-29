@@ -63,7 +63,7 @@ buildVT distf prop xss gen = go xss
         xs' = V.filter (/= vp) xs
         mu = median $ V.map (`distf` vp) xs' -- median distance to the vantage point
         (ll, rr) = V.partition (\x -> distf x vp < mu) xs'
-        
+
       ltree <- branch ll
       rtree <- branch rr
       pure $ Bin mu vp ltree rtree
@@ -78,15 +78,12 @@ selectVP :: (PrimMonad m, RealFrac b, Ord d, Floating d) =>
          -> m a
 selectVP distf prop sset gen = do
 
-  (pstart, pstail, psc) <- vpRandSplitInit n sset gen
+  (pstart, pstail, pscl) <- vpRandSplitInit n sset gen
 
-  let pscl = V.toList psc
-
-      pickMu (spread_curr, p_curr) p = do
-        ds <- sampleId n2 pscl gen -- sample n2 < n points from psc
+  let pickMu (spread_curr, p_curr) p = do
+        ds <- sampleId n2 pscl gen -- sample n2 < n points from pscl
         let
-          dsv = V.fromList ds
-          spread = varianceWrt distf p dsv
+          spread = varianceWrt distf p (V.fromList ds)
 
         if spread > spread_curr
           then pure (spread, p)
@@ -103,34 +100,38 @@ vpRandSplitInit :: PrimMonad m =>
                    Int
                 -> V.Vector a
                 -> P.Gen (PrimState m)
-                -> m (a, V.Vector a, V.Vector a) -- (head of C, tail of C, complement of C)
+                -> m (a, [a], [a]) -- (head of C, tail of C, complement of C)
 vpRandSplitInit n sset gen = do
-  (ps, psc) <- randomSplit n sset gen
-  (pstartv, pstail) <- randomSplit 1 ps gen -- Pick a random starting point from ps
-  let pstart = V.head pstartv
+  (ps, psc) <- uniformSplit n sset gen
+  (pstartv, pstail) <- randomSplit 0.5 1 ps gen -- Pick a random starting point from ps
+  let pstart = head pstartv
   pure (pstart, pstail, psc)
+
+uniformSplit :: (PrimMonad m, Foldable t) =>
+                Int -> t a -> P.Gen (PrimState m) -> m ([a], [a])
+uniformSplit n vv = randomSplit p n vv
+  where
+    p = 1 - (fromIntegral n / fromIntegral (length vv))
 
 -- | Sample a random split of the dataset
 --
 -- Invariant : the concatenation of the two resulting vectors is a permutation of the input vector
 --
 -- NB : the second vector in the result tuple will be empty if the requested sample size is larger than the input vector
-randomSplit :: (PrimMonad f) =>
-               Int -- ^ Size of sample
-            -> V.Vector a -- ^ dataset
-            -> P.Gen (PrimState f) -- ^ PRNG
-            -> f (V.Vector a, V.Vector a)
-randomSplit n vv gen = split <$> sampleId n ixs gen
+randomSplit :: (Foldable t, PrimMonad m) =>
+                Double -- ^ Bernoulli parameter
+             -> Int  -- ^ Size of sample
+             -> t a -- ^ dataset
+             -> P.Gen (PrimState m) -- ^ PRNG
+             -> m ([a], [a])
+randomSplit p n vv = P.sample $ foldlM insf ([], []) vv
   where
-    split xs = (vxs, vxsc)
-      where
-        ixss = S.fromList xs
-        ixsc = S.fromList ixs `S.difference` ixss
-        vxs  = pickItems ixss
-        vxsc = pickItems ixsc
-    m = V.length vv
-    ixs = [0 .. m - 1]
-    pickItems = V.fromList . foldl (\acc i -> vv V.! i : acc) []
+    insf (al, ar) x = do
+      coin <- P.bernoulli p
+      if length al == n || coin
+        then pure (al, x : ar)
+        else pure (x : al, ar)
+
 
 
 
@@ -182,3 +183,26 @@ sortV v = runST $ do
   V.sort vm
   V.freeze vm
 {-# INLINE sortV #-}
+
+
+
+
+
+-- -- OLD
+
+-- randomSplit :: (PrimMonad f) =>
+--                Int -- ^ Size of sample
+--             -> V.Vector a -- ^ dataset
+--             -> P.Gen (PrimState f) -- ^ PRNG
+--             -> f (V.Vector a, V.Vector a)
+-- randomSplit n vv gen = split <$> sampleId n ixs gen
+--   where
+--     split xs = (vxs, vxsc)
+--       where
+--         ixss = S.fromList xs
+--         ixsc = S.fromList ixs `S.difference` ixss
+--         vxs  = pickItems ixss
+--         vxsc = pickItems ixsc
+--     m = V.length vv
+--     ixs = [0 .. m - 1]
+--     pickItems = V.fromList . foldl (\acc i -> vv V.! i : acc) []
