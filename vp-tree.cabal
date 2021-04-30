@@ -26,24 +26,24 @@ library
                        Data.VPTree.TestData
   -- other-modules:       
   build-depends:       base >= 4.7 && < 5
-                     , boxes
+                     , boxes >= 0.1.5
                      -- , conduit
-                     , containers
-                     , deepseq
+                     , containers >= 0.6.0.1
+                     , deepseq >= 1.4.4.0
                      , depq >= 0.3
-                     , exceptions
-                     , mtl
-                     , mwc-probability
-                     , primitive
-                     , psqueues
-                     , sampling
-                     , serialise
-                     , transformers
-                     , vector
-                     , vector-algorithms
+                     -- , exceptions
+                     , mtl >= 2.2.2
+                     , mwc-probability >= 2.1.0
+                     , primitive >= 0.6.4.0
+                     , psqueues >= 0.2.7.2
+                     , sampling >= 0.3.3
+                     , serialise >= 0.2.2.0
+                     , transformers >= 0.5.6.2
+                     , vector >= 0.12.1.2
+                     , vector-algorithms >= 0.8.0.3
                        -- DEBUG
-                     , hspec
-                     , weigh
+                     -- , hspec
+                     -- , weigh
 
 -- executable vp-tree
 --   default-language:    Haskell2010
