@@ -16,4 +16,4 @@ Import 'Data.VPTree', which also contains usage instructions and comments
 
 Cumulative memory usage and garbage collection cycles :
 
-$ stack bench -- vp-tree:bench-memory
+    $ stack bench -- vp-tree:bench-memory
