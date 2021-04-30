@@ -12,7 +12,11 @@ import Data.VPTree.Internal (VPTree(..), VT(..))
 -- boxes
 import qualified Text.PrettyPrint.Boxes as B (Box, render, emptyBox, vcat, hcat, text, top, bottom, center1)
 
--- | Draw a tree
+-- | Render a tree to stdout
+--
+-- Useful for debugging
+--
+-- This should be called only for small trees, otherwise the printed result quickly overflows the screen and becomes hard to read.
 --
 -- NB : prints distance information rounded to two decimal digits
 draw :: (Show a, PrintfArg d) => VPTree d a -> IO ()

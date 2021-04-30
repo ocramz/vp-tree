@@ -14,6 +14,8 @@
 
 This library provides an implementation of Vantage Point Trees [1], a data structure useful for indexing data points that exist in some metric space.
 
+The current implementation is not particolarly optimized and assumes the data resides entirely in memory but it seems to work decently well for index sizes in the 10's of thousands.
+
 = Usage
 
 * 'range' : construct an index from a dataset and a distance function
