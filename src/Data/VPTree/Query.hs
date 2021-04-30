@@ -57,13 +57,13 @@ rangeVT eps x distf = flip evalState 0 . go PQ.empty
       Tip ts ->
         foldlM insf acc ts
         where
-          insf acc t
+          insf ac t
             | d < eps = do
                 i <- get
-                let acc' = PQ.insert i d t acc
+                let ac' = PQ.insert i d t ac
                 put (i + 1)
-                pure acc'
-            | otherwise = pure acc
+                pure ac'
+            | otherwise = pure ac
             where
               d = distf x t
 

@@ -12,11 +12,11 @@ import GHC.Generics (Generic(..))
 -- deepseq
 import Control.DeepSeq (NFData(..))
 -- mwc-probability
-import qualified System.Random.MWC.Probability as P (Gen, Prob, withSystemRandom, asGenIO, GenIO, create, initialize)
+import qualified System.Random.MWC.Probability as P (Gen, withSystemRandom, asGenIO, GenIO, create, initialize)
 -- serialise
 import Codec.Serialise (Serialise(..))
 -- vector
-import qualified Data.Vector as V (Vector(..))
+import qualified Data.Vector as V (Vector)
 import qualified Data.Vector.Generic as VG (Vector(..))
 
 -- | Vantage point tree

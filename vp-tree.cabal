@@ -23,6 +23,7 @@ library
                        Data.VPTree.Query
                        Data.VPTree.Internal
                        Data.VPTree.Draw
+                       Data.VPTree.TestData
   -- other-modules:       
   build-depends:       base >= 4.7 && < 5
                      , boxes
@@ -64,6 +65,23 @@ test-suite spec
                      , primitive
                      , QuickCheck
                      , vector
+
+benchmark bench-memory
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      bench/memory
+  main-is:             Main.hs
+  build-depends:       base
+                     , bytestring
+                     , conduit
+                     , containers
+                     , deepseq
+                     , vector
+                     , weigh
+  ghc-options:         -Wall
+                       -rtsopts
+                       -with-rtsopts=-T
+  default-language:    Haskell2010
+
 
 source-repository head
   type:     git

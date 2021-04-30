@@ -55,7 +55,7 @@ buildVT :: (PrimMonad m, RealFrac b, Floating d, Eq a, Ord d) =>
 buildVT distf prop xss gen = go xss
   where
     go xs
-      | length xs <= 6 = pure $ Tip xs
+      | length xs < 10 = pure $ Tip xs
       | otherwise = do
           (vp, xs') <- selectVP distf prop xs gen
           let
@@ -71,8 +71,8 @@ buildVT distf prop xss gen = go xss
 selectVP :: (PrimMonad m, RealFrac b, Floating d, Ord d) =>
             (a -> a -> d)
          -> b -> V.Vector a -> P.Gen (PrimState m) -> m (a, V.Vector a)
-selectVP distf prop sset gen = do
-  (pstart, pstail, pscl) <- vpRandSplitInit n sset gen
+selectVP distf prop xs gen = do
+  (pstart, pstail, pscl) <- vpRandSplitInit n xs gen
   let pickMu (spread_curr, p_curr, acc) p = do
         ds <- sampleId n2 pscl gen -- sample n2 < n points from pscl
         let
@@ -80,25 +80,29 @@ selectVP distf prop sset gen = do
         if spread > spread_curr
           then pure (spread,      p,      p_curr : acc)
           else pure (spread_curr, p_curr, p      : acc)
-  (vp, xs) <- tail3 <$> foldlM pickMu (0, pstart, mempty) pstail
-  pure (vp, V.fromList xs)
+  (vp, vrest) <- tail3 <$> foldlM pickMu (0, pstart, mempty) pstail
+  pure (vp, V.fromList vrest)
   where
     n = max 1 $ floor (prop * fromIntegral ndata)
     n2 = max 1 $ floor (prop * fromIntegral n)
-    ndata = length sset -- size of dataset at current level
+    ndata = length xs -- size of dataset at current level
     tail3 (_, x, xs) = (x, xs)
 
 
-
+-- | sample the initialization for picking a vantage point
+--
+-- samples a random split of the input dataset, and from the first half further samples a head element, which will be used as candidate vantage point
 vpRandSplitInit :: PrimMonad m =>
                    Int
-                -> V.Vector a
+                -> V.Vector a -- ^ cannot be less than 3 elements
                 -> P.Gen (PrimState m)
                 -> m (a, [a], [a]) -- (head of C, tail of C, complement of C)
 vpRandSplitInit n sset gen = do
   (ps, psc) <- uniformSplit n sset gen
   (pstartv, pstail) <- randomSplit 0.5 1 ps gen -- Pick a random starting point from ps
-  let pstart = head pstartv
+  let
+    -- this is load-bearing, do not change
+    pstart = if null pstartv then pstail !! 1 else head pstartv
   pure (pstart, pstail, psc)
 
 -- | Split a dataset in two, returning a ~ uniform sample
