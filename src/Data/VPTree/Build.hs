@@ -34,11 +34,21 @@ import Data.VPTree.Internal (VT(..), VPTree(..), withST_)
 
 -- | Build a 'VPTree'
 --
--- Implementation detail : construction of a VP-tree requires a randomized algorithm, but we run that in the ST monad so the result is pure
+-- The supplied distance function @d@ must satisfy the definition of a metric, i.e.
+--
+-- * identity of indiscernible elements : \( d(x, y) = 0 \leftrightarrow x \equiv y \)
+--
+-- * symmetry : \(  d(x, y) = d(y, x)  \)
+--
+-- * triangle inequality : \( d(x, y) + d(y, z) >= d(x, z) \)
+--
+-- The current implementation makes multiple passes over the whole dataset, which is why the indexing data must all be present in memory (currently packed as a 'V.Vector').
+--
+-- Implementation detail : construction of a VP-tree requires a randomized algorithm, but we run that in the ST monad so the result is pure.
 build :: (RealFrac p, Floating d, Ord d, Eq a) =>
          (a -> a -> d) -- ^ distance function
-      -> p -- ^ proportion of remaining dataset to sample at each level
-      -> V.Vector a -- ^ dataset
+      -> p -- ^ proportion of remaining dataset to sample at each level, \(0 < p <= 1 \)
+      -> V.Vector a -- ^ dataset used for constructing the index
       -> VPTree d a
 build distf prop xss = withST_ $ \gen -> do
   vt <- buildVT distf prop xss gen

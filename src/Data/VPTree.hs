@@ -10,11 +10,20 @@
 {-# options_ghc -Wno-unused-top-binds #-}
 {-# options_ghc -Wno-unused-imports #-}
 {-# options_ghc  -Wno-name-shadowing #-}
-{- | Vantage point trees
+{- |
 
-Data structures and algorithms for nearest neighbor search in general metric spaces - P. N. Yianilos
+This library provides an implementation of Vantage Point Trees [1], a data structure useful for indexing data points that exist in some metric space.
 
-http://web.cs.iastate.edu/~honavar/nndatastructures.pdf
+= Usage
+
+* 'range' : construct an index from a dataset and a distance function
+
+* 'range' : find points in the index that lie within a given distance from the query
+
+
+= References
+
+1) P. N. Yianilos - Data structures and algorithms for nearest neighbor search in general metric spaces - http://web.cs.iastate.edu/~honavar/nndatastructures.pdf
 -}
 module Data.VPTree
   (VPTree
