@@ -6,7 +6,7 @@ homepage:            https://github.com/ocramz/vp-tree
 license:             BSD3
 license-file:        LICENSE
 author:              Marco Zocca
-maintainer:          zocca.marco gmail
+maintainer:          ocramz
 copyright:           2020-2021 Marco Zocca
 category:            Data, Data Mining, Data Structures, Machine Learning
 build-type:          Simple
