@@ -42,7 +42,7 @@ import Data.VPTree.Internal (VT(..), VPTree(..), withST_)
 --
 -- * triangle inequality : \( d(x, y) + d(y, z) >= d(x, z) \)
 --
--- The current implementation makes multiple passes over the whole dataset, which is why the indexing data must all be present in memory (currently packed as a 'V.Vector').
+-- The current implementation makes multiple passes over the whole dataset, which is why the entire indexing dataset must be present in memory (packed as a 'V.Vector').
 --
 -- Implementation detail : construction of a VP-tree requires a randomized algorithm, but we run that in the ST monad so the result is pure.
 build :: (RealFrac p, Floating d, Ord d, Eq a) =>

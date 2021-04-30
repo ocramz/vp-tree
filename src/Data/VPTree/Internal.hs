@@ -19,7 +19,7 @@ import Codec.Serialise (Serialise(..))
 import qualified Data.Vector as V (Vector)
 import qualified Data.Vector.Generic as VG (Vector(..))
 
--- | Vantage point tree
+-- | Vantage point trees
 data VPTree d a = VPT {
   vpTree :: VT d a
   , vptDistFun :: a -> a -> d -- ^ Distance function used to construct the tree

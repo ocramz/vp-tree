@@ -18,10 +18,11 @@ The current implementation is not particolarly optimized and assumes the data re
 
 = Usage
 
-* 'range' : construct an index from a dataset and a distance function
+* 'build' : construct an index from a dataset and a distance function
 
 * 'range' : find points in the index that lie within a given distance from the query
 
+Additionally, small trees can be rendered to screen with 'draw' for debugging purposes.
 
 = References
 
