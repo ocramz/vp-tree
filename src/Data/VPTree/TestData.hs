@@ -1,9 +1,13 @@
+{-# language DeriveGeneric #-}
 {-# options_ghc -Wno-unused-imports #-}
 module Data.VPTree.TestData where
 
 -- import Data.Foldable (toList)
+import GHC.Generics (Generic(..))
 import Text.Printf (printf)
 
+-- deepseq
+import Control.DeepSeq (NFData())
 -- mwc-probability
 import qualified System.Random.MWC.Probability as P (Gen, Prob, withSystemRandom, asGenIO, GenIO, create, initialize, sample, samples, normal, bernoulli, uniformR)
 -- primitive
@@ -20,7 +24,8 @@ import Data.VPTree.Internal (VT, VPTree, withST, withST_, withIO)
 
 -- test data
 
-data P = P Double Double deriving (Eq)
+data P = P !Double !Double deriving (Eq, Generic)
+instance NFData P
 instance Show P where
   show (P x y) = printf "(%2.2f, %2.2f)" x y --show (x,y)
 
@@ -32,26 +37,26 @@ distp (P x1 y1) (P x2 y2) = sqrt $ (x1 - x2)**2 + (y1 - y2)**2
 
 
 
-t2, t2', t3 :: VPTree Double P
-t3 = buildP $ genN3 12
-t2 = buildP $ genN2 12
-t2' = buildP $ genN2 10000
+-- t2, t2', t3 :: VPTree Double P
+-- t3 = buildP $ genN3 12
+-- t2 = buildP $ genN2 12
+-- t2' = buildP $ genN2 10000
 
-genN1, genN2, genN3 :: Int -> V.Vector P
-genN2 n = V.fromList $ withST_ (P.samples n (binMix 0 25 1 1))
+genN1, gaussMixSamples, binDiskSamples :: Int -> V.Vector P
+gaussMixSamples n = V.fromList $ withST_ (P.samples n (gaussMix 0 25 1 1))
 
 genN1 n = V.fromList $ withST_ (P.samples n (isoNormal2d 0 1))
 
-genN3 n = V.fromList $ withST_ $ P.samples n (binDisk 1 1 z fv)
+binDiskSamples n = V.fromList $ withST_ $ P.samples n (binDisk 1 1 z fv)
   where
     z = P 0 0
     fv = P 5 5
 
 
 -- | binary mixture of isotropic 2d normal distribs
-binMix :: PrimMonad m =>
+gaussMix :: PrimMonad m =>
           Double -> Double -> Double -> Double -> P.Prob m P
-binMix mu1 mu2 sig1 sig2 = do
+gaussMix mu1 mu2 sig1 sig2 = do
   b <- coin
   if b
     then isoNormal2d mu1 sig1

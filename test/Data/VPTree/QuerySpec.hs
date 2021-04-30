@@ -19,7 +19,7 @@ import Data.VPTree.Build (build)
 import Data.VPTree.Draw (draw)
 import Data.VPTree.Internal (VT, VPTree, withST, withST_, withIO)
 import Data.VPTree.Query (range, distances)
-import Data.VPTree.TestData (buildP, genN3, P(..))
+import Data.VPTree.TestData (buildP, binDiskSamples, P(..))
 
 spec :: Spec
 spec = describe "Data.VPTree.Query" $ do
@@ -28,7 +28,7 @@ spec = describe "Data.VPTree.Query" $ do
       thr = 1.0
       query = P 0 1
       n = 30000
-      dat = buildP $ genN3 n
+      dat = buildP $ binDiskSamples n
       res = range dat thr query
     res `shouldSatisfy` all (\(d, _) -> d < thr)
 

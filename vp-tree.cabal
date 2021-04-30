@@ -43,6 +43,7 @@ library
                      , vector-algorithms
                        -- DEBUG
                      , hspec
+                     , weigh
 
 -- executable vp-tree
 --   default-language:    Haskell2010
@@ -71,6 +72,7 @@ benchmark bench-memory
   hs-source-dirs:      bench/memory
   main-is:             Main.hs
   build-depends:       base
+                     , vp-tree
                      , bytestring
                      , conduit
                      , containers
